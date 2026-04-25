@@ -1,6 +1,7 @@
 backend/.env
 backend/venv/
-backend/uploads/
+backend/uploads/*
+!backend/uploads/.gitkeep
 __pycache__/
 *.pyc
 node_modules/
