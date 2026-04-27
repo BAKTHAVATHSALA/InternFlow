@@ -17,30 +17,27 @@ if DATABASE_URL.startswith("postgres://"):
 
 engine = create_engine(DATABASE_URL)
 
-def nuke_db():
-    print("WARNING: Nuking Database...")
+def init_db():
+    print("SYSTEM: Reading schema.sql...")
+    schema_path = os.path.join(os.path.dirname(__file__), "db", "schema.sql")
     
-    commands = [
-        "DROP TABLE IF EXISTS ndas CASCADE;",
-        "DROP TABLE IF EXISTS notifications CASCADE;",
-        "DROP TABLE IF EXISTS audit_logs CASCADE;",
-        "DROP TABLE IF EXISTS applications CASCADE;",
-        "DROP TABLE IF EXISTS jobs CASCADE;",
-        "DROP TABLE IF EXISTS users CASCADE;",
-        "DROP TYPE IF EXISTS applicationstatus CASCADE;"
-    ]
+    with open(schema_path, "r") as f:
+        sql_commands = f.read()
+
+    print("SYSTEM: Executing Schema in Supabase...")
+    # Split by semicolon but be careful with functions/triggers if any
+    # Since we don't have complex blocks yet, we can execute the whole block
     
     with engine.connect() as connection:
         trans = connection.begin()
         try:
-            for command in commands:
-                print(f"Executing: {command}")
-                connection.execute(text(command))
+            # Execute the entire SQL script
+            connection.execute(text(sql_commands))
             trans.commit()
-            print("Database Cleared Successfully!")
+            print("SYSTEM: SUCCESS! Database Schema Created Perfectly.")
         except Exception as e:
             trans.rollback()
-            print(f"Error nuking database: {e}")
+            print(f"SYSTEM: ERROR Initializing Database: {e}")
 
 if __name__ == "__main__":
-    nuke_db()
+    init_db()

@@ -1,16 +1,18 @@
-from sqlalchemy import Column, Integer, String, Text, JSON, ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, String, Float, Boolean, DateTime, text, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from db.database import Base
 
 class Job(Base):
     __tablename__ = "jobs"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     title = Column(String, index=True)
-    description = Column(Text)
-    requirements = Column(JSON)  # List of required skills and their weightage
-    experience_level = Column(String)  # e.g., Low, Medium, High
-    cutoff_score = Column(Integer, default=70)
-    created_by = Column(Integer, ForeignKey("users.id"))
-    
-    owner = relationship("User", backref="jobs")
+    description = Column(String)
+    requirements = Column(JSONB) # {required_skills: [], experience_level: ""}
+    target_skills = Column(JSONB)
+    cutoff_score = Column(Float, default=70.0)
+    mentor_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    is_active = Column(Boolean, server_default=text("true"))
+    created_at = Column(DateTime(timezone=True), server_default=text("now()"))
+    updated_at = Column(DateTime(timezone=True), server_default=text("now()"))

@@ -1,17 +1,16 @@
-from sqlalchemy import Column, Integer, String, Enum
+from sqlalchemy import Column, String, Boolean, DateTime, text
+from sqlalchemy.dialects.postgresql import UUID
 from db.database import Base
-import enum
-
-class UserRole(str, enum.Enum):
-    HR = "hr"
-    INTERN = "intern"
-    MANAGER = "manager"
+from datetime import datetime
 
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, index=True)
-    full_name = Column(String, index=True)
-    email = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
-    role = Column(Enum(UserRole), default=UserRole.INTERN)
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    name = Column(String, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    role = Column(String) # referrer, intern, hr, mentor, admin
+    is_active = Column(Boolean, server_default=text("true"))
+    created_at = Column(DateTime(timezone=True), server_default=text("now()"))
+    updated_at = Column(DateTime(timezone=True), server_default=text("now()"))
