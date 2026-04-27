@@ -6,7 +6,7 @@ from models.applications import Application
 from models.jobs import Job
 from routes.auth import get_current_user
 from services import file_service, app_service
-from ai import gemini_client, embeddings, rag
+from ai import gemini_client, embeddings, rag, ai_client
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
@@ -37,11 +37,11 @@ def score_candidate(application_id: int, db: Session = Depends(get_db), current_
     
     job = db.query(Job).filter(Job.id == db_application.job_id).first()
     
-    # Hybrid Scoring
+    # Hybrid Scoring (using Gemini logic)
     scores = embeddings.calculate_hybrid_score(db_application.resume_data, job.requirements)
     
-    # Generate Explainability
-    explanation = gemini_client.generate_explainability(db_application.resume_data, job.requirements, scores)
+    # Generate PREMIUM Explainability (using OpenAI)
+    explanation = ai_client.generate_premium_explainability(db_application.resume_data, job.requirements, scores)
     
     # Update DB
     db_application.overall_score = scores['overall']
@@ -55,5 +55,6 @@ def score_candidate(application_id: int, db: Session = Depends(get_db), current_
 
 @router.post("/chat")
 def compliance_chat(query: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    response = rag.query_compliance_bot(query)
+    # Use OpenAI for high-reasoning compliance chat
+    response = ai_client.query_premium_compliance(query)
     return {"response": response}

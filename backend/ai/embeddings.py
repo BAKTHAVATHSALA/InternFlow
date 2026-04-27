@@ -22,12 +22,15 @@ def cosine_similarity(v1, v2):
     return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
 
 def calculate_hybrid_score(resume_data: dict, job_requirements: dict):
-    # 0.5 * Semantic Match
-    # 0.3 * Skill Match
-    # 0.2 * Experience Weight
+    # Mapping for experience levels
+    exp_mapping = {
+        'Low (Basics only)': 0.4,
+        'Medium (Projects)': 0.7,
+        'High (Internship / Real-world)': 1.0
+    }
     
-    # 1. Semantic Match (Placeholder for now, can use embeddings if needed)
-    semantic_score = 0.8 
+    # 1. Semantic Match (Simulated for demo, can be expanded with real embeddings)
+    semantic_score = 0.85 
     
     # 2. Skill Match
     candidate_skills = [s['name'].lower() for s in resume_data.get('skills', [])]
@@ -39,15 +42,12 @@ def calculate_hybrid_score(resume_data: dict, job_requirements: dict):
         matches = len(set(candidate_skills) & set(required_skills))
         skill_score = matches / len(required_skills)
     
-    # 3. Experience Weight
-    cand_exp = resume_data.get('experience_years', 0)
-    req_exp = job_requirements.get('min_experience', 0)
-    
-    if cand_exp >= req_exp:
-        exp_score = 1.0
-    else:
-        exp_score = cand_exp / req_exp if req_exp > 0 else 1.0
+    # 3. Exposure / Experience Weight
+    # We take the job's requirement and map it to a weight
+    req_exp_label = job_requirements.get('experience_level', 'Medium (Projects)')
+    exp_score = exp_mapping.get(req_exp_label, 0.7)
         
+    # Final Formula: 0.5 * semantic + 0.3 * skill + 0.2 * exposure
     overall_score = (0.5 * semantic_score) + (0.3 * skill_score) + (0.2 * exp_score)
     
     return {

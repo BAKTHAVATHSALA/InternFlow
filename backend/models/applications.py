@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Enum, JSON, DateTime
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, JSON, DateTime
 from sqlalchemy.orm import relationship
 from db.database import Base
 import enum
@@ -9,7 +9,7 @@ class ApplicationStatus(str, enum.Enum):
     REVIEWED = "reviewed"
     SELECTED = "selected"
     ONBOARDED = "onboarded"
-    CLOSED = "closed"
+    REJECTED = "rejected"
 
 class Application(Base):
     __tablename__ = "applications"
@@ -17,7 +17,7 @@ class Application(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     job_id = Column(Integer, ForeignKey("jobs.id"))
-    status = Column(Enum(ApplicationStatus), default=ApplicationStatus.APPLIED)
+    status = Column(String, default=ApplicationStatus.APPLIED.value)
     
     # Scoring fields
     overall_score = Column(Float, default=0.0)

@@ -8,14 +8,15 @@ from routes.auth import get_current_user
 from datetime import datetime
 from pydantic import BaseModel
 
-router = APIRouter(prefix="/nda", tags=["nda"])
+print("NDA Router Loaded: Registering /nda routes")
+router = APIRouter(tags=["nda"])
 
 class NDASign(BaseModel):
     application_id: int
 
-@router.post("/sign")
+@router.post("/nda/sign")
 def sign_nda(nda_data: NDASign, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # Check if application exists and belongs to user
+    # ... logic stays same ...
     db_application = db.query(Application).filter(
         Application.id == nda_data.application_id,
         Application.user_id == current_user.id
@@ -24,7 +25,8 @@ def sign_nda(nda_data: NDASign, request: Request, db: Session = Depends(get_db),
     if not db_application:
         raise HTTPException(status_code=404, detail="Application not found")
     
-    if db_application.status != ApplicationStatus.SELECTED:
+    if db_application.status != "selected":
+        print(f"NDA Error: Application {nda_data.application_id} is in status {db_application.status}, not selected")
         raise HTTPException(status_code=400, detail="Application must be in SELECTED status to sign NDA")
     
     # Create or update NDA
@@ -38,13 +40,13 @@ def sign_nda(nda_data: NDASign, request: Request, db: Session = Depends(get_db),
     db_nda.ip_address = request.client.host
     
     # Update application status to ONBOARDED
-    db_application.status = ApplicationStatus.ONBOARDED
+    db_application.status = "onboarded"
     
     db.commit()
     db.refresh(db_nda)
     return {"message": "NDA signed successfully", "nda_id": db_nda.id}
 
-@router.get("/status/{application_id}")
+@router.get("/nda/status/{application_id}")
 def get_nda_status(application_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     db_nda = db.query(NDA).filter(NDA.application_id == application_id).first()
     if not db_nda:
