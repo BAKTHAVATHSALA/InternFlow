@@ -1,0 +1,623 @@
+-- ============================================================
+--  INTERNFLOW — COMPLETE POSTGRESQL DATABASE SCHEMA
+--  Run this file once to set up the entire database
+--  psql -U postgres -d internflow -f schema.sql
+-- ============================================================
+
+-- Enable UUID generation
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- ============================================================
+--  ENUMS
+-- ============================================================
+
+CREATE TYPE user_role AS ENUM (
+  'admin',
+  'hr',
+  'employee',
+  'intern',
+  'mentor'
+);
+
+CREATE TYPE user_status AS ENUM (
+  'invited',       -- referral sent, not logged in yet
+  'active',        -- logged in and using portal
+  'inactive',      -- deactivated
+  'offboarded'     -- internship ended
+);
+
+CREATE TYPE referral_status AS ENUM (
+  'pending',       -- invite sent, intern hasn't applied
+  'applied',       -- intern submitted application
+  'screened',      -- AI screening done
+  'offered',       -- HR made offer
+  'rejected',      -- HR rejected
+  'onboarded',     -- fully onboarded
+  'completed',     -- internship done
+  'expired'        -- invite link expired, never applied
+);
+
+CREATE TYPE application_status AS ENUM (
+  'applied',
+  'screened',
+  'offer_pending',
+  'offer_accepted',
+  'rejected',
+  'documents_pending',
+  'onboarded',
+  'completed'
+);
+
+CREATE TYPE document_type AS ENUM (
+  'joining_form',
+  'nda'
+);
+
+CREATE TYPE project_status AS ENUM (
+  'not_submitted',
+  'pending_review',
+  'revision_needed',
+  'approved'
+);
+
+CREATE TYPE ai_recommendation AS ENUM (
+  'strong_pass',
+  'pass',
+  'borderline',
+  'reject'
+);
+
+CREATE TYPE reward_status AS ENUM (
+  'pending',
+  'payable',
+  'paid'
+);
+
+CREATE TYPE lms_module_type AS ENUM (
+  'pdf',
+  'video'
+);
+
+CREATE TYPE notification_type AS ENUM (
+  'referral_submitted',
+  'application_received',
+  'ai_screen_done',
+  'stage_changed',
+  'offer_extended',
+  'nda_signed',
+  'onboarded',
+  'credentials_issued',
+  'lms_completed',
+  'project_submitted',
+  'project_approved',
+  'project_revision',
+  'certificate_ready',
+  'reward_credited',
+  'general'
+);
+
+-- ============================================================
+--  USERS
+-- ============================================================
+
+CREATE TABLE users (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  email           VARCHAR(255) NOT NULL UNIQUE,
+  name            VARCHAR(255) NOT NULL,
+  role            user_role NOT NULL DEFAULT 'intern',
+  status          user_status NOT NULL DEFAULT 'invited',
+  phone           VARCHAR(20),
+  avatar_url      VARCHAR(500),
+  department      VARCHAR(100),           -- for employees and HR
+  employee_id     VARCHAR(50) UNIQUE,     -- company employee ID (employees only)
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_users_email   ON users(email);
+CREATE INDEX idx_users_role    ON users(role);
+CREATE INDEX idx_users_status  ON users(status);
+
+-- ============================================================
+--  AUTH — OTP & SESSIONS
+-- ============================================================
+
+CREATE TABLE otp_tokens (
+  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash    VARCHAR(255) NOT NULL,   -- bcrypt hash of the 6-digit code
+  expires_at    TIMESTAMPTZ NOT NULL,
+  used          BOOLEAN NOT NULL DEFAULT FALSE,
+  ip_address    VARCHAR(45),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_otp_user_id    ON otp_tokens(user_id);
+CREATE INDEX idx_otp_expires_at ON otp_tokens(expires_at);
+
+CREATE TABLE sessions (
+  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash    VARCHAR(255) NOT NULL,   -- bcrypt hash of session JWT
+  ip_address    VARCHAR(45),
+  user_agent    TEXT,
+  expires_at    TIMESTAMPTZ NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_sessions_user_id ON sessions(user_id);
+
+-- ============================================================
+--  JOBS (Open roles HR creates)
+-- ============================================================
+
+CREATE TABLE jobs (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title           VARCHAR(255) NOT NULL,      -- e.g. "Software Engineer Intern"
+  department      VARCHAR(100) NOT NULL,
+  description     TEXT,
+  tech_stack      TEXT[],                     -- ['React', 'Node.js', 'PostgreSQL']
+  stipend         INTEGER,                    -- in INR per month
+  duration_months INTEGER NOT NULL DEFAULT 6,
+  mode            VARCHAR(50),                -- 'Hybrid', 'Remote', 'Onsite'
+  location        VARCHAR(100),
+  is_open         BOOLEAN NOT NULL DEFAULT TRUE,
+  max_referrals   INTEGER DEFAULT 20,
+  created_by      UUID REFERENCES users(id),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_jobs_is_open ON jobs(is_open);
+
+-- ============================================================
+--  REFERRAL QUOTA (per employee per cycle)
+-- ============================================================
+
+CREATE TABLE referral_quotas (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  employee_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  cycle_label     VARCHAR(20) NOT NULL,       -- e.g. '2025-Q2'
+  total_slots     INTEGER NOT NULL DEFAULT 5,
+  used_slots      INTEGER NOT NULL DEFAULT 0,
+  resets_at       TIMESTAMPTZ NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(employee_id, cycle_label)
+);
+
+CREATE INDEX idx_quota_employee ON referral_quotas(employee_id);
+
+-- ============================================================
+--  REFERRALS
+-- ============================================================
+
+CREATE TABLE referrals (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  employee_id     UUID NOT NULL REFERENCES users(id),
+  intern_id       UUID NOT NULL REFERENCES users(id),
+  job_id          UUID NOT NULL REFERENCES jobs(id),
+  status          referral_status NOT NULL DEFAULT 'pending',
+  invite_token    VARCHAR(500),              -- signed JWT for magic link
+  invite_token_expires_at TIMESTAMPTZ,
+  note_to_hr      TEXT,                      -- employee's personal note
+  -- Intern details entered by employee
+  intern_name     VARCHAR(255) NOT NULL,
+  intern_email    VARCHAR(255) NOT NULL,
+  intern_college  VARCHAR(255),
+  intern_degree   VARCHAR(100),
+  intern_grad_year INTEGER,
+  resume_url      VARCHAR(500),              -- optional pre-upload
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_referrals_employee   ON referrals(employee_id);
+CREATE INDEX idx_referrals_intern     ON referrals(intern_id);
+CREATE INDEX idx_referrals_job        ON referrals(job_id);
+CREATE INDEX idx_referrals_status     ON referrals(status);
+
+-- ============================================================
+--  APPLICATIONS
+-- ============================================================
+
+CREATE TABLE applications (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  intern_id       UUID NOT NULL REFERENCES users(id),
+  job_id          UUID NOT NULL REFERENCES jobs(id),
+  referral_id     UUID REFERENCES referrals(id),
+  status          application_status NOT NULL DEFAULT 'applied',
+  -- Personal details
+  first_name      VARCHAR(100) NOT NULL,
+  last_name       VARCHAR(100) NOT NULL,
+  phone           VARCHAR(20),
+  city            VARCHAR(100),
+  -- Education
+  college         VARCHAR(255),
+  degree          VARCHAR(100),
+  cgpa            DECIMAL(3,1),
+  grad_year       INTEGER,
+  -- Resume & links
+  resume_url      VARCHAR(500) NOT NULL,
+  github_url      VARCHAR(255),
+  portfolio_url   VARCHAR(255),
+  -- Skills & checklist
+  skills          TEXT[],                   -- ['React', 'Node.js', 'SQL']
+  checklist       JSONB,                    -- { "available_6months": true, "no_conflict": true }
+  -- HR fields
+  hr_note         TEXT,                     -- internal HR comment
+  rejection_reason TEXT,
+  -- Timestamps
+  applied_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  screened_at     TIMESTAMPTZ,
+  offered_at      TIMESTAMPTZ,
+  onboarded_at    TIMESTAMPTZ,
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_applications_intern  ON applications(intern_id);
+CREATE INDEX idx_applications_job     ON applications(job_id);
+CREATE INDEX idx_applications_status  ON applications(status);
+
+-- ============================================================
+--  AI SCORES
+-- ============================================================
+
+CREATE TABLE ai_scores (
+  id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  application_id    UUID NOT NULL UNIQUE REFERENCES applications(id) ON DELETE CASCADE,
+  overall_score     INTEGER NOT NULL CHECK (overall_score BETWEEN 0 AND 100),
+  skills_match      INTEGER CHECK (skills_match BETWEEN 0 AND 100),
+  experience_fit    INTEGER CHECK (experience_fit BETWEEN 0 AND 100),
+  strengths         TEXT[],                  -- ['Strong React exp', 'Good CGPA']
+  gaps              TEXT[],                  -- ['No Docker experience']
+  improvement_tips  TEXT[],                  -- ['Add CI/CD to portfolio']
+  recommendation    ai_recommendation NOT NULL,
+  raw_ai_response   JSONB,                   -- full response from AI API
+  processing_time_ms INTEGER,               -- e.g. 2300
+  processed_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_ai_scores_app ON ai_scores(application_id);
+
+-- ============================================================
+--  DOCUMENTS (Joining Form + NDA)
+-- ============================================================
+
+CREATE TABLE documents (
+  id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  intern_id         UUID NOT NULL REFERENCES users(id),
+  application_id    UUID NOT NULL REFERENCES applications(id),
+  type              document_type NOT NULL,
+  -- Signature details
+  signature_text    VARCHAR(255),            -- intern typed their name
+  signed_at         TIMESTAMPTZ,
+  ip_address        VARCHAR(45),
+  -- Form fields (stored as JSONB for flexibility)
+  form_data         JSONB,                   -- { "bank_account": "...", "emergency_contact": "..." }
+  -- File copy
+  pdf_url           VARCHAR(500),            -- generated signed PDF
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(intern_id, type)                   -- one of each per intern
+);
+
+CREATE INDEX idx_documents_intern ON documents(intern_id);
+
+-- ============================================================
+--  ONBOARDING — CREDENTIALS & MENTOR ASSIGNMENT
+-- ============================================================
+
+CREATE TABLE credentials (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  intern_id       UUID NOT NULL UNIQUE REFERENCES users(id),
+  work_email      VARCHAR(255) NOT NULL UNIQUE,  -- firstname.lastname@company.intern.io
+  temp_password   VARCHAR(255) NOT NULL,         -- bcrypt hashed
+  intern_id_code  VARCHAR(50) NOT NULL UNIQUE,   -- HEX-INTERN-2025-0047
+  password_changed BOOLEAN NOT NULL DEFAULT FALSE,
+  issued_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at      TIMESTAMPTZ NOT NULL           -- 90 days from start
+);
+
+CREATE TABLE mentor_assignments (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mentor_id       UUID NOT NULL REFERENCES users(id),
+  intern_id       UUID NOT NULL REFERENCES users(id),
+  application_id  UUID NOT NULL REFERENCES applications(id),
+  assigned_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+  UNIQUE(intern_id)                              -- one mentor per intern
+);
+
+CREATE INDEX idx_mentor_assignments_mentor ON mentor_assignments(mentor_id);
+CREATE INDEX idx_mentor_assignments_intern ON mentor_assignments(intern_id);
+
+-- ============================================================
+--  LMS MODULES & PROGRESS
+-- ============================================================
+
+CREATE TABLE lms_modules (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  job_id          UUID REFERENCES jobs(id),      -- NULL = applies to all
+  title           VARCHAR(255) NOT NULL,
+  type            lms_module_type NOT NULL,
+  description     TEXT,
+  file_url        VARCHAR(500),                  -- PDF or video URL
+  duration_minutes INTEGER,
+  sort_order      INTEGER NOT NULL DEFAULT 1,
+  is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE lms_progress (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  intern_id       UUID NOT NULL REFERENCES users(id),
+  module_id       UUID NOT NULL REFERENCES lms_modules(id),
+  completed       BOOLEAN NOT NULL DEFAULT FALSE,
+  progress_pct    INTEGER DEFAULT 0,             -- 0–100, for partial reading
+  completed_at    TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(intern_id, module_id)
+);
+
+CREATE INDEX idx_lms_progress_intern ON lms_progress(intern_id);
+
+-- ============================================================
+--  PROJECTS
+-- ============================================================
+
+CREATE TABLE projects (
+  id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  intern_id         UUID NOT NULL UNIQUE REFERENCES users(id),
+  application_id    UUID NOT NULL REFERENCES applications(id),
+  github_url        VARCHAR(500) NOT NULL,
+  demo_url          VARCHAR(500),
+  description       TEXT NOT NULL,
+  features          TEXT[],                      -- ['User Auth', 'CRUD API']
+  status            project_status NOT NULL DEFAULT 'pending_review',
+  -- Review
+  mentor_feedback   TEXT,
+  reviewed_by       UUID REFERENCES users(id),
+  reviewed_at       TIMESTAMPTZ,
+  -- Timestamps
+  submitted_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_projects_intern  ON projects(intern_id);
+CREATE INDEX idx_projects_status  ON projects(status);
+
+-- ============================================================
+--  CERTIFICATES
+-- ============================================================
+
+CREATE TABLE certificates (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  intern_id       UUID NOT NULL UNIQUE REFERENCES users(id),
+  application_id  UUID NOT NULL REFERENCES applications(id),
+  cert_number     VARCHAR(50) NOT NULL UNIQUE,   -- CERT-HEX-2025-0047
+  pdf_url         VARCHAR(500) NOT NULL,
+  issued_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================
+--  CLOSURE
+-- ============================================================
+
+CREATE TABLE closures (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  intern_id             UUID NOT NULL UNIQUE REFERENCES users(id),
+  application_id        UUID NOT NULL REFERENCES applications(id),
+  -- Exit survey
+  exit_survey_sent      BOOLEAN NOT NULL DEFAULT FALSE,
+  exit_survey_sent_at   TIMESTAMPTZ,
+  exit_survey_completed BOOLEAN NOT NULL DEFAULT FALSE,
+  rating                DECIMAL(2,1) CHECK (rating BETWEEN 1 AND 5),
+  exit_feedback         TEXT,
+  -- Checklist
+  performance_review_done   BOOLEAN NOT NULL DEFAULT FALSE,
+  equipment_returned        BOOLEAN NOT NULL DEFAULT FALSE,
+  access_revoked            BOOLEAN NOT NULL DEFAULT FALSE,
+  payroll_finalised         BOOLEAN NOT NULL DEFAULT FALSE,
+  record_archived           BOOLEAN NOT NULL DEFAULT FALSE,
+  nda_post_reminder_sent    BOOLEAN NOT NULL DEFAULT FALSE,
+  manager_signoff           BOOLEAN NOT NULL DEFAULT FALSE,
+  return_offer              BOOLEAN,               -- NULL=not decided, TRUE=extended, FALSE=not extended
+  -- Meta
+  closed_by         UUID REFERENCES users(id),
+  closed_at         TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================
+--  REWARDS
+-- ============================================================
+
+CREATE TABLE rewards (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  employee_id     UUID NOT NULL REFERENCES users(id),
+  referral_id     UUID NOT NULL REFERENCES referrals(id),
+  amount          INTEGER NOT NULL DEFAULT 5000,  -- in INR
+  status          reward_status NOT NULL DEFAULT 'pending',
+  credited_at     TIMESTAMPTZ,
+  paid_at         TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_rewards_employee ON rewards(employee_id);
+CREATE INDEX idx_rewards_status   ON rewards(status);
+
+-- ============================================================
+--  FEEDBACK (Mentor → Intern)
+-- ============================================================
+
+CREATE TABLE feedback (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  mentor_id       UUID NOT NULL REFERENCES users(id),
+  intern_id       UUID NOT NULL REFERENCES users(id),
+  category        VARCHAR(100),                   -- 'Code Review', 'General', 'LMS', 'Project'
+  message         TEXT NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_feedback_intern ON feedback(intern_id);
+CREATE INDEX idx_feedback_mentor ON feedback(mentor_id);
+
+-- ============================================================
+--  NOTIFICATIONS
+-- ============================================================
+
+CREATE TABLE notifications (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type            notification_type NOT NULL DEFAULT 'general',
+  title           VARCHAR(255) NOT NULL,
+  message         TEXT NOT NULL,
+  link            VARCHAR(500),                   -- deep link to relevant page
+  is_read         BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_notifications_user     ON notifications(user_id);
+CREATE INDEX idx_notifications_is_read  ON notifications(is_read);
+
+-- ============================================================
+--  AUDIT TRAIL (IMMUTABLE — never update, only insert)
+-- ============================================================
+
+CREATE TABLE audit_trail (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id         UUID REFERENCES users(id),      -- NULL = system action
+  user_email      VARCHAR(255),                   -- snapshot at time of action
+  user_role       user_role,
+  action          VARCHAR(100) NOT NULL,           -- 'NDA_SIGNED', 'STAGE_CHANGED'
+  entity_type     VARCHAR(100),                   -- 'application', 'user', 'referral'
+  entity_id       UUID,
+  module          VARCHAR(50),                    -- 'Onboarding', 'Pipeline', 'Settings'
+  old_value       JSONB,                          -- before state
+  new_value       JSONB,                          -- after state
+  ip_address      VARCHAR(45),
+  user_agent      TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Make audit_trail append-only (no UPDATE or DELETE allowed)
+CREATE RULE audit_no_update AS ON UPDATE TO audit_trail DO INSTEAD NOTHING;
+CREATE RULE audit_no_delete AS ON DELETE TO audit_trail DO INSTEAD NOTHING;
+
+CREATE INDEX idx_audit_user_id    ON audit_trail(user_id);
+CREATE INDEX idx_audit_entity     ON audit_trail(entity_type, entity_id);
+CREATE INDEX idx_audit_created_at ON audit_trail(created_at);
+CREATE INDEX idx_audit_module     ON audit_trail(module);
+
+-- ============================================================
+--  SETTINGS
+-- ============================================================
+
+CREATE TABLE settings (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id         UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  -- Notification preferences
+  notif_new_referral      BOOLEAN NOT NULL DEFAULT TRUE,
+  notif_nda_signed        BOOLEAN NOT NULL DEFAULT TRUE,
+  notif_stage_update      BOOLEAN NOT NULL DEFAULT FALSE,
+  notif_internship_closure BOOLEAN NOT NULL DEFAULT TRUE,
+  notif_weekly_digest     BOOLEAN NOT NULL DEFAULT FALSE,
+  -- Security
+  two_factor_enabled      BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================
+--  UPDATED_AT TRIGGER (auto-updates updated_at column)
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_users_updated_at
+  BEFORE UPDATE ON users
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER trg_referrals_updated_at
+  BEFORE UPDATE ON referrals
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER trg_applications_updated_at
+  BEFORE UPDATE ON applications
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER trg_jobs_updated_at
+  BEFORE UPDATE ON jobs
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER trg_projects_updated_at
+  BEFORE UPDATE ON projects
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ============================================================
+--  SEED DATA — Default LMS Modules
+-- ============================================================
+
+INSERT INTO lms_modules (title, type, description, duration_minutes, sort_order) VALUES
+  ('React Fundamentals Guide', 'pdf', 'Core concepts of React including components, hooks, and state management.', 30, 1),
+  ('Node.js & REST APIs', 'video', 'Building RESTful APIs with Node.js, Express, and best practices.', 42, 2),
+  ('PostgreSQL & Database Design', 'pdf', 'Relational database design, SQL queries, indexing, and optimisation.', 45, 3);
+
+-- ============================================================
+--  SEED DATA — Default Admin + HR user
+-- ============================================================
+
+INSERT INTO users (email, name, role, status, department) VALUES
+  ('admin@hexaware.internflow.io', 'Platform Admin', 'admin', 'active', 'IT'),
+  ('hr@hexaware.internflow.io', 'HR Administrator', 'hr', 'active', 'Human Resources');
+
+-- ============================================================
+--  USEFUL VIEWS
+-- ============================================================
+
+-- Full pipeline view for HR dashboard
+CREATE VIEW vw_pipeline AS
+SELECT
+  a.id                  AS application_id,
+  u.name                AS intern_name,
+  u.email               AS intern_email,
+  j.title               AS role,
+  j.department,
+  r.intern_college      AS college,
+  emp.name              AS referred_by,
+  sc.overall_score      AS ai_score,
+  sc.recommendation     AS ai_recommendation,
+  a.status,
+  a.applied_at,
+  a.offered_at,
+  a.onboarded_at
+FROM applications a
+JOIN users u          ON u.id = a.intern_id
+JOIN jobs j           ON j.id = a.job_id
+LEFT JOIN referrals r ON r.id = a.referral_id
+LEFT JOIN users emp   ON emp.id = r.employee_id
+LEFT JOIN ai_scores sc ON sc.application_id = a.id;
+
+-- Employee referral summary
+CREATE VIEW vw_employee_referrals AS
+SELECT
+  emp.id            AS employee_id,
+  emp.name          AS employee_name,
+  COUNT(r.id)       AS total_referrals,
+  COUNT(CASE WHEN a.status = 'onboarded' THEN 1 END) AS onboarded,
+  SUM(CASE WHEN rw.status IN ('payable','paid') THEN rw.amount ELSE 0 END) AS total_reward
+FROM users emp
+LEFT JOIN referrals r  ON r.employee_id = emp.id
+LEFT JOIN applications a ON a.referral_id = r.id
+LEFT JOIN rewards rw   ON rw.referral_id = r.id
+WHERE emp.role = 'employee'
+GROUP BY emp.id, emp.name;
+
+-- ============================================================
+--  END OF SCHEMA
+-- ============================================================

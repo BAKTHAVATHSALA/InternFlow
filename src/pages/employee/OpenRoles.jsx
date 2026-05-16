@@ -1,0 +1,184 @@
+import React, { useState } from 'react';
+import { 
+  Briefcase, 
+  MapPin, 
+  Clock, 
+  Search, 
+  Filter, 
+  Plus, 
+  ArrowUpRight,
+  Monitor,
+  Database,
+  Layout,
+  Smartphone
+} from 'lucide-react';
+import { cn } from '../../utils/cn';
+import { useNavigate } from 'react-router-dom';
+
+const rolesData = [
+  { 
+    id: 1, 
+    title: 'Product Design Intern', 
+    company: 'InternFlow', 
+    location: 'Remote', 
+    mode: 'Full-time', 
+    tech: ['Figma', 'Adobe XD', 'Prototyping'], 
+    stipend: '₹15,000/mo', 
+    duration: '3-6 Months',
+    icon: Layout,
+    color: 'bg-purple-100 text-purple-600'
+  },
+  { 
+    id: 2, 
+    title: 'Fullstack Dev Intern', 
+    company: 'InternFlow', 
+    location: 'Bangalore', 
+    mode: 'Hybrid', 
+    tech: ['React', 'Node.js', 'PostgreSQL'], 
+    stipend: '₹20,000/mo', 
+    duration: '6 Months',
+    icon: Monitor,
+    color: 'bg-blue-100 text-blue-600'
+  },
+  { 
+    id: 3, 
+    title: 'Backend Intern', 
+    company: 'InternFlow', 
+    location: 'Bangalore', 
+    mode: 'On-site', 
+    tech: ['Go', 'Docker', 'Redis'], 
+    stipend: '₹18,000/mo', 
+    duration: '3 Months',
+    icon: Database,
+    color: 'bg-emerald-100 text-emerald-600'
+  },
+];
+
+const OpenRoles = () => {
+  const navigate = useNavigate();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterDepartment, setFilterDepartment] = useState('All');
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
+
+  const filteredRoles = rolesData.filter(role => {
+    const matchesSearch = role.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          role.tech.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
+    
+    // Using title as a proxy for department since dummy data doesn't have a department field, 
+    // or we can just filter by title matching some keywords if needed.
+    // Wait, the new DB seed has departments! But this is the frontend dummy data.
+    // Let's add a proxy department filter based on title or just add a generic 'department' check.
+    // Assuming the frontend will be connected to the API later, we'll pretend the role has a department field.
+    const matchesDept = filterDepartment === 'All' || (role.department && role.department === filterDepartment) || role.title.includes(filterDepartment);
+    
+    return matchesSearch && matchesDept;
+  });
+
+  return (
+    <div className="space-y-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Open Roles</h1>
+          <p className="text-slate-500 mt-1 font-medium">Find roles to refer your contacts to.</p>
+        </div>
+        <div className="flex gap-3 relative">
+          <div className="relative group">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 group-focus-within:text-purple-500 transition-colors" />
+            <input 
+              type="text" 
+              placeholder="Search roles or skills..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 w-64" 
+            />
+          </div>
+          <button 
+            onClick={() => setShowFilterMenu(!showFilterMenu)}
+            className={cn(
+              "p-2 bg-white border rounded-xl transition-colors",
+              showFilterMenu || filterDepartment !== 'All' ? "border-purple-500 text-purple-600 bg-purple-50" : "border-slate-200 text-slate-600 hover:bg-slate-50"
+            )}
+          >
+            <Filter size={20} />
+          </button>
+          
+          {showFilterMenu && (
+            <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-2 overflow-hidden">
+              <div className="text-xs font-bold text-slate-400 uppercase tracking-widest p-2">Filter by Dept</div>
+              {['All', 'Design', 'Engineering', 'Marketing', 'Product', 'HR', 'Cybersecurity', 'Data'].map(dept => (
+                <button
+                  key={dept}
+                  onClick={() => { setFilterDepartment(dept); setShowFilterMenu(false); }}
+                  className={cn(
+                    "w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                    filterDepartment === dept ? "bg-purple-100 text-purple-700" : "text-slate-600 hover:bg-slate-50"
+                  )}
+                >
+                  {dept}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredRoles.length > 0 ? filteredRoles.map((role) => (
+          <div key={role.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col hover:border-purple-200 transition-all hover:shadow-md group">
+            <div className="flex justify-between items-start mb-6">
+              <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center", role.color)}>
+                <role.icon size={24} />
+              </div>
+              <button className="p-2 text-slate-400 hover:text-purple-600 transition-colors">
+                <ArrowUpRight size={20} />
+              </button>
+            </div>
+            
+            <h3 className="text-lg font-bold text-slate-900 group-hover:text-purple-600 transition-colors mb-2">{role.title}</h3>
+            
+            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 font-medium mb-6">
+              <span className="flex items-center gap-1.5"><Briefcase size={12} /> {role.company}</span>
+              <span className="w-1 h-1 bg-slate-200 rounded-full" />
+              <span className="flex items-center gap-1.5"><MapPin size={12} /> {role.location}</span>
+              <span className="w-1 h-1 bg-slate-200 rounded-full" />
+              <span className="text-purple-600 font-bold">{role.mode}</span>
+            </div>
+
+            <div className="flex flex-wrap gap-2 mb-8">
+              {role.tech.map(tag => (
+                <span key={tag} className="px-2.5 py-1 bg-slate-50 border border-slate-100 rounded-lg text-[10px] font-bold text-slate-600 uppercase tracking-tight">
+                  {tag}
+                </span>
+              ))}
+            </div>
+
+            <div className="mt-auto space-y-4">
+              <div className="flex items-center justify-between p-3 bg-slate-50/50 rounded-xl border border-slate-100">
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Stipend</p>
+                  <p className="text-xs font-bold text-slate-900">{role.stipend}</p>
+                </div>
+                <div className="text-right space-y-0.5">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Duration</p>
+                  <p className="text-xs font-bold text-slate-900">{role.duration}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => navigate('/refer')}
+                className="w-full py-3 bg-white border border-slate-200 text-purple-600 text-[10px] font-bold rounded-xl uppercase tracking-widest hover:bg-purple-600 hover:text-white hover:border-purple-600 transition-all shadow-sm group-hover:shadow-purple-100 shadow-transparent"
+              >
+                Refer Someone
+              </button>
+            </div>
+          </div>
+        )) : (
+          <div className="lg:col-span-3 py-20 text-center bg-white rounded-2xl border border-dashed border-slate-200">
+            <p className="text-slate-400 font-medium">No roles found matching your search.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default OpenRoles;

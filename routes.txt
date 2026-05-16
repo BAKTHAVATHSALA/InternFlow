@@ -1,0 +1,1227 @@
+// ============================================================
+//  INTERNFLOW — COMPLETE NODE.JS + EXPRESS ROUTE STRUCTURE
+//  Stack: Node.js · Express · PostgreSQL (pg) · JWT · bcrypt
+// ============================================================
+
+// ── Project structure ────────────────────────────────────────
+//
+//  internflow-backend/
+//  ├── src/
+//  │   ├── index.js              ← Entry point
+//  │   ├── db.js                 ← PostgreSQL pool
+//  │   ├── middleware/
+//  │   │   ├── auth.js           ← JWT verify + role guard
+//  │   │   └── audit.js          ← Auto audit log on mutations
+//  │   ├── routes/
+//  │   │   ├── auth.js
+//  │   │   ├── referrals.js
+//  │   │   ├── applications.js
+//  │   │   ├── pipeline.js       ← HR only
+//  │   │   ├── documents.js
+//  │   │   ├── onboarding.js
+//  │   │   ├── lms.js
+//  │   │   ├── projects.js
+//  │   │   ├── mentor.js
+//  │   │   ├── certificates.js
+//  │   │   ├── closure.js
+//  │   │   ├── rewards.js
+//  │   │   ├── notifications.js
+//  │   │   ├── audit.js
+//  │   │   ├── jobs.js
+//  │   │   └── settings.js
+//  │   ├── services/
+//  │   │   ├── emailService.js   ← Sends all emails
+//  │   │   ├── aiService.js      ← AI resume scoring
+//  │   │   ├── pdfService.js     ← Certificate + document PDF gen
+//  │   │   └── storageService.js ← File uploads (S3 / local)
+//  │   └── workers/
+//  │       └── aiScreeningWorker.js ← Background job
+//  ├── .env
+//  ├── package.json
+//  └── schema.sql
+
+
+// ============================================================
+//  src/index.js
+// ============================================================
+
+const express = require('express');
+const cors    = require('cors');
+const helmet  = require('helmet');
+const morgan  = require('morgan');
+const app     = express();
+
+app.use(helmet());
+app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
+app.use(express.json());
+app.use(morgan('dev'));
+
+// ── Routes
+app.use('/auth',               require('./routes/auth'));
+app.use('/api/jobs',           require('./routes/jobs'));
+app.use('/api/referrals',      require('./routes/referrals'));
+app.use('/api/applications',   require('./routes/applications'));
+app.use('/api/pipeline',       require('./routes/pipeline'));
+app.use('/api/documents',      require('./routes/documents'));
+app.use('/api/onboarding',     require('./routes/onboarding'));
+app.use('/api/lms',            require('./routes/lms'));
+app.use('/api/projects',       require('./routes/projects'));
+app.use('/api/mentor',         require('./routes/mentor'));
+app.use('/api/certificates',   require('./routes/certificates'));
+app.use('/api/closure',        require('./routes/closure'));
+app.use('/api/rewards',        require('./routes/rewards'));
+app.use('/api/notifications',  require('./routes/notifications'));
+app.use('/api/audit-trail',    require('./routes/audit'));
+app.use('/api/settings',       require('./routes/settings'));
+
+// ── Global error handler
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+});
+
+app.listen(process.env.PORT || 4000, () =>
+  console.log(`InternFlow API running on port ${process.env.PORT || 4000}`)
+);
+
+
+// ============================================================
+//  src/db.js
+// ============================================================
+
+const { Pool } = require('pg');
+
+const pool = new Pool({
+  host:     process.env.DB_HOST,
+  port:     process.env.DB_PORT     || 5432,
+  database: process.env.DB_NAME     || 'internflow',
+  user:     process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  ssl:      process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+});
+
+module.exports = pool;
+
+
+// ============================================================
+//  src/middleware/auth.js
+// ============================================================
+
+const jwt    = require('jsonwebtoken');
+const db     = require('../db');
+
+// Verifies JWT from Authorization: Bearer <token>
+// Attaches req.user = { id, email, role }
+const authenticate = async (req, res, next) => {
+  try {
+    const header = req.headers.authorization;
+    if (!header?.startsWith('Bearer '))
+      return res.status(401).json({ error: 'No token provided' });
+
+    const token = header.split(' ')[1];
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Verify session still active in DB
+    const { rows } = await db.query(
+      'SELECT id FROM sessions WHERE id = $1 AND expires_at > NOW()',
+      [payload.sessionId]
+    );
+    if (!rows.length) return res.status(401).json({ error: 'Session expired' });
+
+    req.user = { id: payload.userId, email: payload.email, role: payload.role };
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+};
+
+// Role guard factory — usage: authorize('hr', 'admin')
+const authorize = (...roles) => (req, res, next) => {
+  if (!roles.includes(req.user.role))
+    return res.status(403).json({ error: 'Insufficient permissions' });
+  next();
+};
+
+module.exports = { authenticate, authorize };
+
+
+// ============================================================
+//  src/routes/auth.js
+// ============================================================
+
+const router  = require('express').Router();
+const bcrypt  = require('bcrypt');
+const jwt     = require('jsonwebtoken');
+const crypto  = require('crypto');
+const db      = require('../db');
+const email   = require('../services/emailService');
+
+// POST /auth/otp/send
+// Body: { email }
+// Generates 6-digit OTP, hashes it, stores in DB, sends email
+router.post('/otp/send', async (req, res) => {
+  const { email: userEmail } = req.body;
+  if (!userEmail) return res.status(400).json({ error: 'Email required' });
+
+  // Find user
+  const { rows } = await db.query('SELECT id, name FROM users WHERE email = $1', [userEmail]);
+  if (!rows.length) return res.status(404).json({ error: 'Email not found. Check your referral email.' });
+  const user = rows[0];
+
+  // Rate limit: max 3 OTPs per hour per user
+  const { rows: recent } = await db.query(
+    `SELECT COUNT(*) FROM otp_tokens
+     WHERE user_id = $1 AND created_at > NOW() - INTERVAL '1 hour' AND used = FALSE`,
+    [user.id]
+  );
+  if (parseInt(recent[0].count) >= 3)
+    return res.status(429).json({ error: 'Too many OTP requests. Wait an hour.' });
+
+  // Generate OTP
+  const otp = crypto.randomInt(100000, 999999).toString();
+  const hash = await bcrypt.hash(otp, 10);
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 min
+
+  await db.query(
+    'INSERT INTO otp_tokens (user_id, token_hash, expires_at, ip_address) VALUES ($1, $2, $3, $4)',
+    [user.id, hash, expiresAt, req.ip]
+  );
+
+  // Send OTP email
+  await email.sendOtp({ to: userEmail, name: user.name, otp });
+
+  res.json({ message: 'OTP sent', expiresIn: 600 });
+});
+
+
+// POST /auth/otp/verify
+// Body: { email, otp }
+// Returns: { token, user }
+router.post('/otp/verify', async (req, res) => {
+  const { email: userEmail, otp } = req.body;
+  if (!userEmail || !otp) return res.status(400).json({ error: 'Email and OTP required' });
+
+  // Find user
+  const { rows: users } = await db.query(
+    'SELECT id, email, name, role FROM users WHERE email = $1',
+    [userEmail]
+  );
+  if (!users.length) return res.status(404).json({ error: 'User not found' });
+  const user = users[0];
+
+  // Find latest valid OTP
+  const { rows: tokens } = await db.query(
+    `SELECT id, token_hash FROM otp_tokens
+     WHERE user_id = $1 AND used = FALSE AND expires_at > NOW()
+     ORDER BY created_at DESC LIMIT 1`,
+    [user.id]
+  );
+  if (!tokens.length) return res.status(400).json({ error: 'OTP expired or not found' });
+
+  // Verify OTP
+  const valid = await bcrypt.compare(otp, tokens[0].token_hash);
+  if (!valid) return res.status(400).json({ error: 'Invalid OTP' });
+
+  // Mark OTP used
+  await db.query('UPDATE otp_tokens SET used = TRUE WHERE id = $1', [tokens[0].id]);
+
+  // Create session
+  const sessionId = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+  await db.query(
+    'INSERT INTO sessions (id, user_id, token_hash, ip_address, user_agent, expires_at) VALUES ($1, $2, $3, $4, $5, $6)',
+    [sessionId, user.id, await bcrypt.hash(sessionId, 8), req.ip, req.headers['user-agent'], expiresAt]
+  );
+
+  // Issue JWT
+  const token = jwt.sign(
+    { sessionId, userId: user.id, email: user.email, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+
+  // Update user status to active
+  await db.query("UPDATE users SET status = 'active' WHERE id = $1", [user.id]);
+
+  res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+});
+
+
+// GET /auth/magic?token=...
+// Validates magic link token, returns pre-filled email
+router.get('/magic', async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).json({ error: 'Token required' });
+
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    if (payload.type !== 'magic_link') throw new Error('Invalid token type');
+    res.json({ email: payload.email, name: payload.name, role: payload.role });
+  } catch {
+    res.status(400).json({ error: 'Invalid or expired link. Request a new one.' });
+  }
+});
+
+
+// POST /auth/logout
+const { authenticate } = require('../middleware/auth');
+router.post('/logout', authenticate, async (req, res) => {
+  const token = req.headers.authorization.split(' ')[1];
+  const payload = jwt.decode(token);
+  await db.query('DELETE FROM sessions WHERE id = $1', [payload.sessionId]);
+  res.json({ message: 'Logged out' });
+});
+
+
+module.exports = router;
+
+
+// ============================================================
+//  src/routes/referrals.js  (Employee)
+// ============================================================
+
+const router  = require('express').Router();
+const jwt     = require('jsonwebtoken');
+const db      = require('../db');
+const email   = require('../services/emailService');
+const { authenticate, authorize } = require('../middleware/auth');
+
+// GET /api/referrals/quota
+// Employee checks remaining slots
+router.get('/quota', authenticate, authorize('employee'), async (req, res) => {
+  const { rows } = await db.query(
+    `SELECT total_slots, used_slots, resets_at
+     FROM referral_quotas
+     WHERE employee_id = $1 AND cycle_label = $2`,
+    [req.user.id, getCurrentCycle()]
+  );
+  const quota = rows[0] || { total_slots: 5, used_slots: 0 };
+  res.json({ remaining: quota.total_slots - quota.used_slots, ...quota });
+});
+
+
+// POST /api/referrals
+// Employee submits a referral
+router.post('/', authenticate, authorize('employee'), async (req, res) => {
+  const {
+    intern_name, intern_email, job_id,
+    intern_college, intern_degree, intern_grad_year,
+    resume_url, note_to_hr
+  } = req.body;
+
+  // 1. Check quota
+  const { rows: quotaRows } = await db.query(
+    `SELECT id, total_slots, used_slots FROM referral_quotas
+     WHERE employee_id = $1 AND cycle_label = $2`,
+    [req.user.id, getCurrentCycle()]
+  );
+
+  const quota = quotaRows[0];
+  if (!quota || quota.used_slots >= quota.total_slots)
+    return res.status(400).json({ error: 'Referral quota exceeded for this cycle' });
+
+  // 2. Create or find intern user
+  let internId;
+  const { rows: existing } = await db.query(
+    'SELECT id FROM users WHERE email = $1', [intern_email]
+  );
+
+  if (existing.length) {
+    internId = existing[0].id;
+  } else {
+    const { rows: newUser } = await db.query(
+      `INSERT INTO users (email, name, role, status)
+       VALUES ($1, $2, 'intern', 'invited') RETURNING id`,
+      [intern_email, intern_name]
+    );
+    internId = newUser[0].id;
+  }
+
+  // 3. Create referral
+  const { rows: referral } = await db.query(
+    `INSERT INTO referrals
+     (employee_id, intern_id, job_id, status, intern_name, intern_email,
+      intern_college, intern_degree, intern_grad_year, resume_url, note_to_hr)
+     VALUES ($1,$2,$3,'pending',$4,$5,$6,$7,$8,$9,$10)
+     RETURNING id`,
+    [req.user.id, internId, job_id, intern_name, intern_email,
+     intern_college, intern_degree, intern_grad_year, resume_url, note_to_hr]
+  );
+  const referralId = referral[0].id;
+
+  // 4. Deduct quota
+  await db.query(
+    'UPDATE referral_quotas SET used_slots = used_slots + 1 WHERE id = $1',
+    [quota.id]
+  );
+
+  // 5. Generate magic link token (24hr)
+  const job = await db.query('SELECT title FROM jobs WHERE id = $1', [job_id]);
+  const magicToken = jwt.sign(
+    { type: 'magic_link', email: intern_email, name: intern_name, role: 'intern' },
+    process.env.JWT_SECRET,
+    { expiresIn: '24h' }
+  );
+  await db.query(
+    `UPDATE referrals SET invite_token = $1,
+     invite_token_expires_at = NOW() + INTERVAL '24 hours' WHERE id = $2`,
+    [magicToken, referralId]
+  );
+
+  // 6. Send invite email to intern
+  await email.sendReferralInvite({
+    to: intern_email,
+    internName: intern_name,
+    referrerName: req.user.name || 'A colleague',
+    roleName: job.rows[0].title,
+    magicLink: `${process.env.FRONTEND_URL}/login?token=${magicToken}`,
+  });
+
+  // 7. Notify employee
+  await email.sendReferralSubmittedConfirm({
+    to: req.user.email,
+    employeeName: req.user.name,
+    internName: intern_name,
+    roleName: job.rows[0].title,
+    referralId,
+    remaining: quota.total_slots - quota.used_slots - 1,
+  });
+
+  // 8. Notify HR
+  await db.query(
+    `INSERT INTO notifications (user_id, type, title, message)
+     SELECT id, 'referral_submitted', $1, $2 FROM users WHERE role IN ('hr','admin')`,
+    [`New referral: ${intern_name}`, `${req.user.email} referred ${intern_name} for ${job.rows[0].title}`]
+  );
+
+  // 9. Audit log
+  await db.query(
+    `INSERT INTO audit_trail (user_id, user_email, user_role, action, entity_type, entity_id, module, ip_address)
+     VALUES ($1,$2,$3,'REFERRAL_CREATED','referral',$4,'Referral Intake',$5)`,
+    [req.user.id, req.user.email, req.user.role, referralId, req.ip]
+  );
+
+  res.status(201).json({ message: 'Referral submitted', referralId });
+});
+
+
+// GET /api/referrals/mine
+// Employee views their referrals with current status
+router.get('/mine', authenticate, authorize('employee'), async (req, res) => {
+  const { rows } = await db.query(
+    `SELECT r.id, r.intern_name, r.intern_email, r.status, r.created_at,
+            j.title AS role, sc.overall_score AS ai_score
+     FROM referrals r
+     JOIN jobs j ON j.id = r.job_id
+     LEFT JOIN applications a ON a.referral_id = r.id
+     LEFT JOIN ai_scores sc ON sc.application_id = a.id
+     WHERE r.employee_id = $1
+     ORDER BY r.created_at DESC`,
+    [req.user.id]
+  );
+  res.json(rows);
+});
+
+function getCurrentCycle() {
+  const now = new Date();
+  const q = Math.ceil((now.getMonth() + 1) / 3);
+  return `${now.getFullYear()}-Q${q}`;
+}
+
+module.exports = router;
+
+
+// ============================================================
+//  src/routes/applications.js  (Intern)
+// ============================================================
+
+const router  = require('express').Router();
+const db      = require('../db');
+const storage = require('../services/storageService');
+const aiWorker = require('../workers/aiScreeningWorker');
+const { authenticate, authorize } = require('../middleware/auth');
+
+// POST /api/applications
+// Intern submits full application form
+router.post('/', authenticate, authorize('intern'), async (req, res) => {
+  const {
+    job_id, referral_id,
+    first_name, last_name, phone, city,
+    college, degree, cgpa, grad_year,
+    github_url, portfolio_url,
+    skills, checklist, resume_url,
+  } = req.body;
+
+  // Prevent duplicate application
+  const { rows: dup } = await db.query(
+    'SELECT id FROM applications WHERE intern_id = $1 AND job_id = $2',
+    [req.user.id, job_id]
+  );
+  if (dup.length) return res.status(409).json({ error: 'Already applied for this role' });
+
+  const { rows } = await db.query(
+    `INSERT INTO applications
+     (intern_id, job_id, referral_id, status,
+      first_name, last_name, phone, city,
+      college, degree, cgpa, grad_year,
+      resume_url, github_url, portfolio_url, skills, checklist)
+     VALUES ($1,$2,$3,'applied',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+     RETURNING id`,
+    [req.user.id, job_id, referral_id,
+     first_name, last_name, phone, city,
+     college, degree, cgpa, grad_year,
+     resume_url, github_url, portfolio_url,
+     skills, JSON.stringify(checklist)]
+  );
+  const applicationId = rows[0].id;
+
+  // Update referral status
+  if (referral_id) {
+    await db.query("UPDATE referrals SET status = 'applied' WHERE id = $1", [referral_id]);
+  }
+
+  // Trigger AI screening in background
+  aiWorker.queue(applicationId);
+
+  // Audit
+  await db.query(
+    `INSERT INTO audit_trail (user_id, user_email, user_role, action, entity_type, entity_id, module, ip_address)
+     VALUES ($1,$2,$3,'APPLICATION_SUBMITTED','application',$4,'Pipeline',$5)`,
+    [req.user.id, req.user.email, req.user.role, applicationId, req.ip]
+  );
+
+  res.status(201).json({ message: 'Application submitted. AI screening in progress.', applicationId });
+});
+
+
+// GET /api/applications/mine
+// Intern views their own application with current status and AI score
+router.get('/mine', authenticate, authorize('intern'), async (req, res) => {
+  const { rows } = await db.query(
+    `SELECT a.*, j.title AS role, j.stipend, j.duration_months, j.mode, j.location,
+            sc.overall_score, sc.skills_match, sc.experience_fit,
+            sc.strengths, sc.gaps, sc.recommendation,
+            doc_j.signed_at AS joining_signed_at,
+            doc_n.signed_at AS nda_signed_at,
+            ma.mentor_id,
+            mu.name AS mentor_name, mu.email AS mentor_email
+     FROM applications a
+     JOIN jobs j ON j.id = a.job_id
+     LEFT JOIN ai_scores sc ON sc.application_id = a.id
+     LEFT JOIN documents doc_j ON doc_j.intern_id = a.intern_id AND doc_j.type = 'joining_form'
+     LEFT JOIN documents doc_n ON doc_n.intern_id = a.intern_id AND doc_n.type = 'nda'
+     LEFT JOIN mentor_assignments ma ON ma.intern_id = a.intern_id
+     LEFT JOIN users mu ON mu.id = ma.mentor_id
+     WHERE a.intern_id = $1
+     ORDER BY a.applied_at DESC LIMIT 1`,
+    [req.user.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'No application found' });
+  res.json(rows[0]);
+});
+
+
+// POST /api/applications/:id/accept-offer
+router.post('/:id/accept-offer', authenticate, authorize('intern'), async (req, res) => {
+  const { rows } = await db.query(
+    `UPDATE applications SET status = 'offer_accepted', updated_at = NOW()
+     WHERE id = $1 AND intern_id = $2 AND status = 'offer_pending'
+     RETURNING id`,
+    [req.params.id, req.user.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Application not found or offer not pending' });
+  res.json({ message: 'Offer accepted! Please sign your documents.' });
+});
+
+module.exports = router;
+
+
+// ============================================================
+//  src/routes/pipeline.js  (HR)
+// ============================================================
+
+const router  = require('express').Router();
+const db      = require('../db');
+const email   = require('../services/emailService');
+const { authenticate, authorize } = require('../middleware/auth');
+
+// GET /api/pipeline
+// HR views all candidates with filters
+router.get('/', authenticate, authorize('hr', 'admin'), async (req, res) => {
+  const { stage, department, search, sort = 'applied_at' } = req.query;
+  let query = `SELECT * FROM vw_pipeline WHERE 1=1`;
+  const params = [];
+
+  if (stage)      { params.push(stage);      query += ` AND status = $${params.length}`; }
+  if (department) { params.push(department); query += ` AND department = $${params.length}`; }
+  if (search)     { params.push(`%${search}%`); query += ` AND intern_name ILIKE $${params.length}`; }
+
+  query += ` ORDER BY ${sort} DESC`;
+  const { rows } = await db.query(query, params);
+  res.json(rows);
+});
+
+
+// GET /api/pipeline/:applicationId
+// HR views single candidate full profile
+router.get('/:applicationId', authenticate, authorize('hr', 'admin'), async (req, res) => {
+  const { rows } = await db.query(
+    `SELECT a.*, j.title AS role, j.stipend, j.duration_months,
+            u.email AS intern_email,
+            emp.name AS referred_by_name,
+            sc.overall_score, sc.skills_match, sc.experience_fit,
+            sc.strengths, sc.gaps, sc.improvement_tips, sc.recommendation
+     FROM applications a
+     JOIN jobs j ON j.id = a.job_id
+     JOIN users u ON u.id = a.intern_id
+     LEFT JOIN referrals r ON r.id = a.referral_id
+     LEFT JOIN users emp ON emp.id = r.employee_id
+     LEFT JOIN ai_scores sc ON sc.application_id = a.id
+     WHERE a.id = $1`,
+    [req.params.applicationId]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Application not found' });
+  res.json(rows[0]);
+});
+
+
+// PATCH /api/pipeline/:applicationId/stage
+// HR moves candidate to a new stage: offer_pending | rejected | screened
+router.patch('/:applicationId/stage', authenticate, authorize('hr', 'admin'), async (req, res) => {
+  const { status, hr_note, rejection_reason } = req.body;
+  const allowed = ['screened', 'offer_pending', 'rejected'];
+  if (!allowed.includes(status))
+    return res.status(400).json({ error: `Status must be one of: ${allowed.join(', ')}` });
+
+  const { rows } = await db.query(
+    `UPDATE applications
+     SET status = $1, hr_note = $2, rejection_reason = $3,
+         offered_at = CASE WHEN $1 = 'offer_pending' THEN NOW() ELSE offered_at END,
+         updated_at = NOW()
+     WHERE id = $4
+     RETURNING *, (SELECT email FROM users WHERE id = intern_id) AS intern_email,
+               (SELECT name FROM jobs WHERE id = job_id) AS role_name`,
+    [status, hr_note, rejection_reason, req.params.applicationId]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Application not found' });
+
+  const app = rows[0];
+
+  // Send email based on new stage
+  if (status === 'offer_pending') {
+    const job = await db.query('SELECT * FROM jobs WHERE id = $1', [app.job_id]);
+    await email.sendOfferExtended({
+      to: app.intern_email,
+      internName: `${app.first_name} ${app.last_name}`,
+      role: app.role_name,
+      stipend: job.rows[0].stipend,
+      startDate: '15 June 2025',
+      portalLink: `${process.env.FRONTEND_URL}/portal`,
+    });
+  }
+
+  if (status === 'rejected') {
+    await email.sendRejection({
+      to: app.intern_email,
+      internName: `${app.first_name} ${app.last_name}`,
+      role: app.role_name,
+      feedback: rejection_reason,
+    });
+    // Return referral slot
+    await db.query(
+      `UPDATE referral_quotas SET used_slots = used_slots - 1
+       WHERE employee_id = (SELECT employee_id FROM referrals WHERE id = $1)
+       AND cycle_label = $2`,
+      [app.referral_id, getCurrentCycle()]
+    );
+  }
+
+  // Update referral status to match
+  if (app.referral_id) {
+    const refStatus = { offer_pending: 'offered', rejected: 'rejected', screened: 'screened' };
+    await db.query("UPDATE referrals SET status = $1 WHERE id = $2", [refStatus[status], app.referral_id]);
+  }
+
+  // Audit
+  await db.query(
+    `INSERT INTO audit_trail (user_id, user_email, user_role, action, entity_type, entity_id, module, new_value, ip_address)
+     VALUES ($1,$2,$3,'STAGE_CHANGED','application',$4,'Pipeline',$5,$6)`,
+    [req.user.id, req.user.email, req.user.role, req.params.applicationId, JSON.stringify({ status }), req.ip]
+  );
+
+  res.json({ message: `Stage updated to ${status}`, application: app });
+});
+
+function getCurrentCycle() {
+  const now = new Date();
+  const q = Math.ceil((now.getMonth() + 1) / 3);
+  return `${now.getFullYear()}-Q${q}`;
+}
+
+module.exports = router;
+
+
+// ============================================================
+//  src/routes/documents.js  (Intern)
+// ============================================================
+
+const router  = require('express').Router();
+const db      = require('../db');
+const email   = require('../services/emailService');
+const pdf     = require('../services/pdfService');
+const { authenticate, authorize } = require('../middleware/auth');
+
+// POST /api/documents/joining-form
+router.post('/joining-form', authenticate, authorize('intern'), async (req, res) => {
+  const { application_id, form_data, signature_text } = req.body;
+
+  // Check NDA not yet signed (joining form must come first)
+  const { rows: nda } = await db.query(
+    "SELECT id FROM documents WHERE intern_id = $1 AND type = 'nda'",
+    [req.user.id]
+  );
+  if (nda.length) return res.status(400).json({ error: 'NDA already signed. Joining form must be signed first.' });
+
+  // Check joining form not already signed
+  const { rows: existing } = await db.query(
+    "SELECT id FROM documents WHERE intern_id = $1 AND type = 'joining_form'",
+    [req.user.id]
+  );
+  if (existing.length) return res.status(409).json({ error: 'Joining form already signed' });
+
+  // Generate PDF
+  const pdfUrl = await pdf.generateJoiningForm({ internId: req.user.id, formData: form_data });
+
+  await db.query(
+    `INSERT INTO documents (intern_id, application_id, type, signature_text, signed_at, ip_address, form_data, pdf_url)
+     VALUES ($1, $2, 'joining_form', $3, NOW(), $4, $5, $6)`,
+    [req.user.id, application_id, signature_text, req.ip, JSON.stringify(form_data), pdfUrl]
+  );
+
+  // Audit
+  await db.query(
+    `INSERT INTO audit_trail (user_id, user_email, user_role, action, entity_type, entity_id, module, ip_address)
+     VALUES ($1,$2,$3,'JOINING_FORM_SIGNED','document',$4,'Onboarding',$5)`,
+    [req.user.id, req.user.email, req.user.role, application_id, req.ip]
+  );
+
+  res.json({ message: 'Joining form signed. You can now sign the NDA.' });
+});
+
+
+// POST /api/documents/nda
+// NDA can only be signed AFTER joining form
+router.post('/nda', authenticate, authorize('intern'), async (req, res) => {
+  const { application_id, signature_text } = req.body;
+
+  // Joining form must exist first
+  const { rows: joining } = await db.query(
+    "SELECT id FROM documents WHERE intern_id = $1 AND type = 'joining_form'",
+    [req.user.id]
+  );
+  if (!joining.length)
+    return res.status(400).json({ error: 'Please sign the Joining Form before signing the NDA' });
+
+  // NDA not already signed
+  const { rows: existing } = await db.query(
+    "SELECT id FROM documents WHERE intern_id = $1 AND type = 'nda'",
+    [req.user.id]
+  );
+  if (existing.length) return res.status(409).json({ error: 'NDA already signed' });
+
+  const pdfUrl = await pdf.generateNDA({ internId: req.user.id, signatureText: signature_text });
+
+  await db.query(
+    `INSERT INTO documents (intern_id, application_id, type, signature_text, signed_at, ip_address, pdf_url)
+     VALUES ($1, $2, 'nda', $3, NOW(), $4, $5)`,
+    [req.user.id, application_id, signature_text, req.ip, pdfUrl]
+  );
+
+  // Mark application as onboarded
+  await db.query(
+    "UPDATE applications SET status = 'onboarded', onboarded_at = NOW() WHERE id = $1",
+    [application_id]
+  );
+
+  // Update referral status
+  await db.query(
+    "UPDATE referrals SET status = 'onboarded' WHERE intern_id = $1",
+    [req.user.id]
+  );
+
+  // Trigger reward for employee
+  await db.query(
+    `INSERT INTO rewards (employee_id, referral_id, amount, status)
+     SELECT r.employee_id, r.id, 5000, 'payable'
+     FROM referrals r WHERE r.intern_id = $1`,
+    [req.user.id]
+  );
+
+  // Send confirmation emails
+  const intern = await db.query('SELECT name, email FROM users WHERE id = $1', [req.user.id]);
+  await email.sendOnboardedConfirm({ to: intern.rows[0].email, internName: intern.rows[0].name });
+
+  // Notify HR
+  await db.query(
+    `INSERT INTO notifications (user_id, type, title, message)
+     SELECT id, 'nda_signed', $1, $2 FROM users WHERE role IN ('hr','admin')`,
+    [`NDA signed: ${intern.rows[0].name}`, `${intern.rows[0].name} has signed the NDA and is fully onboarded.`]
+  );
+
+  // Audit
+  await db.query(
+    `INSERT INTO audit_trail (user_id, user_email, user_role, action, entity_type, entity_id, module, ip_address)
+     VALUES ($1,$2,$3,'NDA_SIGNED','document',$4,'Onboarding',$5)`,
+    [req.user.id, req.user.email, req.user.role, application_id, req.ip]
+  );
+
+  res.json({ message: 'NDA signed. You are now fully onboarded! 🎉' });
+});
+
+module.exports = router;
+
+
+// ============================================================
+//  src/routes/projects.js  (Intern + Mentor)
+// ============================================================
+
+const router   = require('express').Router();
+const db       = require('../db');
+const email    = require('../services/emailService');
+const pdfSvc   = require('../services/pdfService');
+const { authenticate, authorize } = require('../middleware/auth');
+
+// POST /api/projects/submit  (Intern)
+// Only allowed if all LMS modules completed
+router.post('/submit', authenticate, authorize('intern'), async (req, res) => {
+  const { application_id, github_url, demo_url, description, features } = req.body;
+
+  // Check all LMS modules done
+  const { rows: modules } = await db.query('SELECT id FROM lms_modules WHERE is_active = TRUE');
+  const { rows: progress } = await db.query(
+    'SELECT module_id FROM lms_progress WHERE intern_id = $1 AND completed = TRUE',
+    [req.user.id]
+  );
+  const completedIds = progress.map(p => p.module_id);
+  const allDone = modules.every(m => completedIds.includes(m.id));
+  if (!allDone) return res.status(400).json({ error: 'Complete all LMS modules before submitting your project' });
+
+  // No duplicate submission
+  const { rows: dup } = await db.query(
+    'SELECT id FROM projects WHERE intern_id = $1', [req.user.id]
+  );
+  if (dup.length) return res.status(409).json({ error: 'Project already submitted. Wait for mentor review.' });
+
+  const { rows } = await db.query(
+    `INSERT INTO projects (intern_id, application_id, github_url, demo_url, description, features, status)
+     VALUES ($1,$2,$3,$4,$5,$6,'pending_review') RETURNING id`,
+    [req.user.id, application_id, github_url, demo_url, description, features]
+  );
+
+  // Notify mentor
+  const mentor = await db.query(
+    `SELECT mu.email, mu.name FROM mentor_assignments ma
+     JOIN users mu ON mu.id = ma.mentor_id
+     WHERE ma.intern_id = $1`, [req.user.id]
+  );
+  if (mentor.rows.length) {
+    const intern = await db.query('SELECT name FROM users WHERE id = $1', [req.user.id]);
+    await email.sendProjectSubmitted({
+      to: mentor.rows[0].email,
+      mentorName: mentor.rows[0].name,
+      internName: intern.rows[0].name,
+      githubUrl: github_url,
+      demoUrl: demo_url,
+    });
+  }
+
+  res.status(201).json({ message: 'Project submitted for mentor review!', projectId: rows[0].id });
+});
+
+
+// PATCH /api/projects/:id/review  (Mentor)
+// Mentor approves or requests changes
+router.patch('/:id/review', authenticate, authorize('mentor'), async (req, res) => {
+  const { status, mentor_feedback } = req.body; // 'approved' | 'revision_needed'
+  if (!['approved', 'revision_needed'].includes(status))
+    return res.status(400).json({ error: 'Status must be approved or revision_needed' });
+
+  const { rows } = await db.query(
+    `UPDATE projects SET status = $1, mentor_feedback = $2, reviewed_by = $3, reviewed_at = NOW()
+     WHERE id = $4 RETURNING *, (SELECT name FROM users WHERE id = intern_id) AS intern_name,
+     (SELECT email FROM users WHERE id = intern_id) AS intern_email`,
+    [status, mentor_feedback, req.user.id, req.params.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Project not found' });
+
+  const project = rows[0];
+
+  if (status === 'approved') {
+    // Complete internship
+    await db.query(
+      "UPDATE applications SET status = 'completed' WHERE intern_id = $1",
+      [project.intern_id]
+    );
+    await db.query(
+      "UPDATE referrals SET status = 'completed' WHERE intern_id = $1",
+      [project.intern_id]
+    );
+
+    // Generate certificate
+    const certNumber = `CERT-HEX-${new Date().getFullYear()}-${String(project.intern_id).slice(-4).toUpperCase()}`;
+    const pdfUrl = await pdfSvc.generateCertificate({
+      internId: project.intern_id,
+      internName: project.intern_name,
+      role: 'Software Engineer Intern',
+      mentorName: req.user.name,
+      certNumber,
+    });
+
+    await db.query(
+      `INSERT INTO certificates (intern_id, application_id, cert_number, pdf_url)
+       VALUES ($1, $2, $3, $4)`,
+      [project.intern_id, project.application_id, certNumber, pdfUrl]
+    );
+
+    await email.sendCertificateReady({
+      to: project.intern_email,
+      internName: project.intern_name,
+      certNumber,
+      downloadLink: pdfUrl,
+    });
+  }
+
+  if (status === 'revision_needed') {
+    await email.sendRevisionRequested({
+      to: project.intern_email,
+      internName: project.intern_name,
+      feedback: mentor_feedback,
+    });
+  }
+
+  res.json({ message: `Project ${status === 'approved' ? 'approved — certificate generated!' : 'sent back for revision'}` });
+});
+
+
+// GET /api/projects/:id  (Mentor)
+router.get('/:id', authenticate, authorize('mentor', 'hr', 'admin'), async (req, res) => {
+  const { rows } = await db.query(
+    `SELECT p.*, u.name AS intern_name, u.email AS intern_email
+     FROM projects p JOIN users u ON u.id = p.intern_id
+     WHERE p.id = $1`, [req.params.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Project not found' });
+  res.json(rows[0]);
+});
+
+module.exports = router;
+
+
+// ============================================================
+//  src/workers/aiScreeningWorker.js
+// ============================================================
+
+const db      = require('../db');
+const email   = require('../services/emailService');
+
+// In production: use Bull + Redis for proper job queue
+// For hackathon: simple async function called directly
+const queue = async (applicationId) => {
+  // Small delay so response returns to intern first
+  setTimeout(() => processApplication(applicationId), 2000);
+};
+
+const processApplication = async (applicationId) => {
+  try {
+    // 1. Fetch application + resume
+    const { rows } = await db.query(
+      `SELECT a.*, j.title AS role, j.description AS job_desc, j.tech_stack,
+              u.name AS intern_name, u.email AS intern_email
+       FROM applications a
+       JOIN jobs j ON j.id = a.job_id
+       JOIN users u ON u.id = a.intern_id
+       WHERE a.id = $1`, [applicationId]
+    );
+    if (!rows.length) return;
+    const app = rows[0];
+
+    const start = Date.now();
+
+    // 2. Call AI API
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: `You are an internship resume screener. Score this candidate for the role of ${app.role}.
+Job requires: ${app.tech_stack?.join(', ')}.
+Candidate skills: ${app.skills?.join(', ')}.
+College: ${app.college}, Degree: ${app.degree}, CGPA: ${app.cgpa}.
+Resume URL: ${app.resume_url}
+
+Return ONLY valid JSON:
+{
+  "overall_score": <0-100>,
+  "skills_match": <0-100>,
+  "experience_fit": <0-100>,
+  "strengths": ["str1","str2","str3"],
+  "gaps": ["gap1","gap2","gap3"],
+  "improvement_tips": ["tip1","tip2"],
+  "recommendation": "strong_pass"|"pass"|"borderline"|"reject"
+}`
+        }]
+      })
+    });
+
+    const data = await response.json();
+    const result = JSON.parse(data.content[0].text);
+    const processingMs = Date.now() - start;
+
+    // 3. Store AI score
+    await db.query(
+      `INSERT INTO ai_scores
+       (application_id, overall_score, skills_match, experience_fit,
+        strengths, gaps, improvement_tips, recommendation, raw_ai_response, processing_time_ms)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [applicationId, result.overall_score, result.skills_match, result.experience_fit,
+       result.strengths, result.gaps, result.improvement_tips,
+       result.recommendation, JSON.stringify(result), processingMs]
+    );
+
+    // 4. Update application status to screened
+    await db.query(
+      "UPDATE applications SET status = 'screened', screened_at = NOW() WHERE id = $1",
+      [applicationId]
+    );
+    await db.query(
+      "UPDATE referrals SET status = 'screened' WHERE intern_id = $1",
+      [app.intern_id]
+    );
+
+    // 5. Notify HR
+    await email.sendAiScreenDone({
+      hrEmail: 'hr@hexaware.internflow.io',
+      candidateName: app.intern_name,
+      role: app.role,
+      score: result.overall_score,
+      recommendation: result.recommendation,
+    });
+
+    // 6. Audit
+    await db.query(
+      `INSERT INTO audit_trail (user_id, action, entity_type, entity_id, module, new_value)
+       VALUES (NULL, 'AI_RESUME_PARSED', 'application', $1, 'Pipeline', $2)`,
+      [applicationId, JSON.stringify({ score: result.overall_score, recommendation: result.recommendation })]
+    );
+
+    console.log(`[AI Worker] Application ${applicationId} screened. Score: ${result.overall_score}`);
+
+  } catch (err) {
+    console.error('[AI Worker] Error:', err.message);
+  }
+};
+
+module.exports = { queue };
+
+
+// ============================================================
+//  src/routes/lms.js  (Intern)
+// ============================================================
+
+const router = require('express').Router();
+const db     = require('../db');
+const email  = require('../services/emailService');
+const { authenticate, authorize } = require('../middleware/auth');
+
+// GET /api/lms/modules
+router.get('/modules', authenticate, authorize('intern'), async (req, res) => {
+  const { rows: modules } = await db.query(
+    'SELECT * FROM lms_modules WHERE is_active = TRUE ORDER BY sort_order'
+  );
+  const { rows: progress } = await db.query(
+    'SELECT module_id, completed, progress_pct, completed_at FROM lms_progress WHERE intern_id = $1',
+    [req.user.id]
+  );
+  const progressMap = {};
+  progress.forEach(p => { progressMap[p.module_id] = p; });
+
+  const result = modules.map(m => ({
+    ...m,
+    completed:    progressMap[m.id]?.completed || false,
+    progress_pct: progressMap[m.id]?.progress_pct || 0,
+    completed_at: progressMap[m.id]?.completed_at || null,
+  }));
+
+  res.json(result);
+});
+
+// PATCH /api/lms/modules/:id/complete
+router.patch('/modules/:id/complete', authenticate, authorize('intern'), async (req, res) => {
+  await db.query(
+    `INSERT INTO lms_progress (intern_id, module_id, completed, progress_pct, completed_at)
+     VALUES ($1, $2, TRUE, 100, NOW())
+     ON CONFLICT (intern_id, module_id)
+     DO UPDATE SET completed = TRUE, progress_pct = 100, completed_at = NOW()`,
+    [req.user.id, req.params.id]
+  );
+
+  // Check if all modules done → notify mentor
+  const { rows: all } = await db.query('SELECT id FROM lms_modules WHERE is_active = TRUE');
+  const { rows: done } = await db.query(
+    'SELECT module_id FROM lms_progress WHERE intern_id = $1 AND completed = TRUE',
+    [req.user.id]
+  );
+  if (done.length >= all.length) {
+    const mentor = await db.query(
+      `SELECT mu.email, mu.name, u.name AS intern_name
+       FROM mentor_assignments ma
+       JOIN users mu ON mu.id = ma.mentor_id
+       JOIN users u ON u.id = ma.intern_id
+       WHERE ma.intern_id = $1`, [req.user.id]
+    );
+    if (mentor.rows.length) {
+      await email.sendLmsCompleted({
+        to: mentor.rows[0].email,
+        mentorName: mentor.rows[0].name,
+        internName: mentor.rows[0].intern_name,
+      });
+    }
+  }
+
+  res.json({ message: 'Module marked complete!' });
+});
+
+module.exports = router;
+
+
+// ============================================================
+//  src/routes/notifications.js
+// ============================================================
+
+const router = require('express').Router();
+const db     = require('../db');
+const { authenticate } = require('../middleware/auth');
+
+// GET /api/notifications
+router.get('/', authenticate, async (req, res) => {
+  const { rows } = await db.query(
+    'SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50',
+    [req.user.id]
+  );
+  res.json(rows);
+});
+
+// PATCH /api/notifications/:id/read
+router.patch('/:id/read', authenticate, async (req, res) => {
+  await db.query(
+    'UPDATE notifications SET is_read = TRUE WHERE id = $1 AND user_id = $2',
+    [req.params.id, req.user.id]
+  );
+  res.json({ message: 'Marked as read' });
+});
+
+// PATCH /api/notifications/read-all
+router.patch('/read-all', authenticate, async (req, res) => {
+  await db.query(
+    'UPDATE notifications SET is_read = TRUE WHERE user_id = $1',
+    [req.user.id]
+  );
+  res.json({ message: 'All notifications marked as read' });
+});
+
+module.exports = router;
+
+
+// ============================================================
+//  src/routes/audit.js  (HR / Admin only)
+// ============================================================
+
+const router = require('express').Router();
+const db     = require('../db');
+const { authenticate, authorize } = require('../middleware/auth');
+
+// GET /api/audit-trail
+router.get('/', authenticate, authorize('hr', 'admin'), async (req, res) => {
+  const { module, action, limit = 50, offset = 0 } = req.query;
+  let query = 'SELECT * FROM audit_trail WHERE 1=1';
+  const params = [];
+
+  if (module) { params.push(module); query += ` AND module = $${params.length}`; }
+  if (action) { params.push(action); query += ` AND action ILIKE $${params.length}`; }
+
+  params.push(limit); query += ` ORDER BY created_at DESC LIMIT $${params.length}`;
+  params.push(offset); query += ` OFFSET $${params.length}`;
+
+  const { rows } = await db.query(query, params);
+  res.json(rows);
+});
+
+module.exports = router;
+
+
+// ============================================================
+//  .env  (copy to .env and fill in values)
+// ============================================================
+
+/*
+PORT=4000
+FRONTEND_URL=http://localhost:3000
+
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=internflow
+DB_USER=postgres
+DB_PASSWORD=yourpassword
+
+JWT_SECRET=your-super-secret-key-change-this
+
+# Email (use Resend, SendGrid, or Nodemailer)
+SMTP_HOST=smtp.resend.com
+SMTP_PORT=465
+SMTP_USER=resend
+SMTP_PASS=re_your_api_key
+EMAIL_FROM=noreply@internflow.io
+
+# File storage
+STORAGE_TYPE=local   # or 's3'
+S3_BUCKET=internflow-uploads
+S3_REGION=ap-south-1
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+
+# AI API
+ANTHROPIC_API_KEY=sk-ant-...
+*/
+
+
+// ============================================================
+//  package.json dependencies
+// ============================================================
+
+/*
+{
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.11.5",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "nodemailer": "^6.9.13",
+    "multer": "^1.4.5-lts.1",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev":   "nodemon src/index.js"
+  }
+}
+*/
