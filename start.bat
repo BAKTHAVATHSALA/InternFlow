@@ -1,0 +1,3 @@
+@echo off
+echo Starting InternFlow Full-Stack Platform...
+npm run dev:full
