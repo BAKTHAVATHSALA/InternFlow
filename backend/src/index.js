@@ -32,6 +32,7 @@ app.use('/auth', require('./routes/auth'));
 app.use('/api/jobs', require('./routes/jobs'));
 app.use('/api/referrals', require('./routes/referrals'));
 app.use('/api/applications', require('./routes/applications'));
+app.use('/api/pipeline', require('./routes/pipeline'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/onboarding', require('./routes/onboarding'));
 app.use('/api/documents', require('./routes/documents'));

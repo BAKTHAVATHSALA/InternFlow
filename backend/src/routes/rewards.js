@@ -15,10 +15,11 @@ const { authenticate, authorize } = require('../middleware/auth');
  */
 router.get('/mine', authenticate, authorize('employee'), async (req, res) => {
   try {
-    const { rows } = await db.query('SELECT * FROM rewards WHERE user_id = $1 ORDER BY created_at DESC', [req.user.id]);
+    const { rows } = await db.query('SELECT * FROM rewards WHERE employee_id = $1 ORDER BY created_at DESC', [req.user.id]);
     const total = rows.reduce((acc, curr) => acc + parseFloat(curr.amount), 0);
     res.json({ history: rows, total_earned: total });
   } catch (err) {
+    console.error('Failed to fetch rewards:', err);
     res.status(500).json({ error: 'Failed to fetch rewards' });
   }
 });
@@ -36,9 +37,10 @@ router.get('/mine', authenticate, authorize('employee'), async (req, res) => {
  */
 router.get('/', authenticate, authorize('hr', 'admin'), async (req, res) => {
   try {
-    const { rows } = await db.query('SELECT r.*, u.name as user_name FROM rewards r JOIN users u ON r.user_id = u.id ORDER BY r.created_at DESC');
+    const { rows } = await db.query('SELECT r.*, u.name as user_name FROM rewards r JOIN users u ON r.employee_id = u.id ORDER BY r.created_at DESC');
     res.json(rows);
   } catch (err) {
+    console.error('Failed to fetch rewards:', err);
     res.status(500).json({ error: 'Failed to fetch rewards' });
   }
 });

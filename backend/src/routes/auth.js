@@ -39,8 +39,20 @@ router.post('/login', async (req, res) => {
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const token = jwt.sign({ id: user.id, role: user.role, name: user.name }, process.env.JWT_SECRET, { expiresIn: '24h' });
-    res.json({ token, user: { id: user.id, name: user.name, role: user.role } });
+    const sessionId = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    await db.query(
+      'INSERT INTO sessions (id, user_id, token_hash, ip_address, user_agent, expires_at) VALUES ($1, $2, $3, $4, $5, $6)',
+      [sessionId, user.id, await bcrypt.hash(sessionId, 8), req.ip, req.headers['user-agent'], expiresAt]
+    );
+
+    const token = jwt.sign(
+      { sessionId, userId: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
   } catch (err) {
     res.status(500).json({ error: 'Login failed' });
   }
@@ -80,14 +92,26 @@ router.post('/signup', async (req, res) => {
 
     const hash = await bcrypt.hash(password, 10);
     const { rows } = await db.query(
-      'INSERT INTO users (email, password_hash, name, role, department, status) VALUES ($1, $2, $3, $4, $5, \'active\') RETURNING id, name, role',
+      'INSERT INTO users (email, password_hash, name, role, department, status) VALUES ($1, $2, $3, $4, $5, \'active\') RETURNING id, name, email, role',
       [email, hash, name, role, department]
     );
 
     const user = rows[0];
-    const token = jwt.sign({ id: user.id, role: user.role, name: user.name }, process.env.JWT_SECRET, { expiresIn: '24h' });
+    const sessionId = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    await db.query(
+      'INSERT INTO sessions (id, user_id, token_hash, ip_address, user_agent, expires_at) VALUES ($1, $2, $3, $4, $5, $6)',
+      [sessionId, user.id, await bcrypt.hash(sessionId, 8), req.ip, req.headers['user-agent'], expiresAt]
+    );
+
+    const token = jwt.sign(
+      { sessionId, userId: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
     
-    res.status(201).json({ token, user });
+    res.status(201).json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
   } catch (err) {
     res.status(500).json({ error: 'Signup failed' });
   }

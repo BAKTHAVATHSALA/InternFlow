@@ -79,6 +79,26 @@ def seed_database():
         intern_ids = [u["id"] for u in all_users if u["role"] == "intern"]
         job_ids = [j["id"] for j in all_jobs]
         
+        # Ensure Demo Intern always has a referral, application, AI score, and is onboarded
+        demo_intern_id = next(u["id"] for u in all_users if u["email"] == "intern@internflow.ai")
+        main_emp_id = next(u["id"] for u in all_users if u["email"] == "employee@internflow.ai")
+        eng_job_id = next(j["id"] for j in all_jobs if j["department"] == "Engineering")
+        
+        if demo_intern_id in intern_ids:
+            intern_ids.remove(demo_intern_id)
+
+        demo_ref_id = uuid.uuid4()
+        all_referrals.append({
+            "id": demo_ref_id,
+            "employee_id": main_emp_id,
+            "intern_id": demo_intern_id,
+            "job_id": eng_job_id,
+            "status": "onboarded",
+            "intern_name": "Demo Intern",
+            "intern_email": "intern@internflow.ai",
+            "created_at": datetime.utcnow() - timedelta(days=20)
+        })
+        
         for emp_id in employee_ids:
             all_quotas.append({
                 "id": uuid.uuid4(),
@@ -113,7 +133,12 @@ def seed_database():
         print("📝 Processing applications and AI screening...")
         all_apps = []
         for ref in all_referrals:
-            all_apps.append(create_fake_application(ref["intern_id"], ref["job_id"], ref["id"]))
+            app = create_fake_application(ref["intern_id"], ref["job_id"], ref["id"])
+            if ref["intern_id"] == demo_intern_id:
+                app["status"] = "onboarded"
+                app["first_name"] = "Demo"
+                app["last_name"] = "Intern"
+            all_apps.append(app)
         
         # Add some direct applications
         for _ in range(20):

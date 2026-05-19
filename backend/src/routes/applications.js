@@ -90,9 +90,20 @@ router.post('/', authenticate, authorize('intern'), async (req, res) => {
 router.get('/mine', authenticate, authorize('intern'), async (req, res) => {
   try {
     const { rows } = await db.query(
-      `SELECT a.*, j.title AS role
+      `SELECT a.*, j.title AS role, j.stipend, j.duration_months, j.mode, j.location,
+              sc.overall_score, sc.skills_match, sc.experience_fit,
+              sc.strengths, sc.gaps, sc.recommendation,
+              doc_j.signed_at AS joining_signed_at,
+              doc_n.signed_at AS nda_signed_at,
+              ma.mentor_id,
+              mu.name AS mentor_name, mu.email AS mentor_email
        FROM applications a
        JOIN jobs j ON j.id = a.job_id
+       LEFT JOIN ai_scores sc ON sc.application_id = a.id
+       LEFT JOIN documents doc_j ON doc_j.intern_id = a.intern_id AND doc_j.type = 'joining_form'
+       LEFT JOIN documents doc_n ON doc_n.intern_id = a.intern_id AND doc_n.type = 'nda'
+       LEFT JOIN mentor_assignments ma ON ma.intern_id = a.intern_id
+       LEFT JOIN users mu ON mu.id = ma.mentor_id
        WHERE a.intern_id = $1
        ORDER BY a.applied_at DESC LIMIT 1`,
       [req.user.id]
@@ -100,6 +111,7 @@ router.get('/mine', authenticate, authorize('intern'), async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'No application found' });
     res.json(rows[0]);
   } catch (err) {
+    console.error('Failed to fetch application:', err);
     res.status(500).json({ error: 'Failed to fetch application' });
   }
 });

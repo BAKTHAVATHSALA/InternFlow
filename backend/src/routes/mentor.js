@@ -97,11 +97,12 @@ router.post('/feedback', authenticate, authorize('mentor'), async (req, res) => 
   try {
     const { intern_id, message, type } = req.body;
     await db.query(
-      'INSERT INTO mentor_feedback (mentor_id, intern_id, message, type) VALUES ($1, $2, $3, $4)',
+      'INSERT INTO feedback (mentor_id, intern_id, message, category) VALUES ($1, $2, $3, $4)',
       [req.user.id, intern_id, message, type || 'general']
     );
     res.status(201).json({ message: 'Feedback sent' });
   } catch (err) {
+    console.error('Failed to send feedback:', err);
     res.status(500).json({ error: 'Failed to send feedback' });
   }
 });
@@ -125,11 +126,12 @@ router.post('/feedback', authenticate, authorize('mentor'), async (req, res) => 
 router.get('/feedback/:internId', authenticate, async (req, res) => {
   try {
     const { rows } = await db.query(
-      'SELECT f.*, u.name as mentor_name FROM mentor_feedback f JOIN users u ON f.mentor_id = u.id WHERE f.intern_id = $1 ORDER BY f.created_at DESC',
+      'SELECT f.*, u.name as mentor_name FROM feedback f JOIN users u ON f.mentor_id = u.id WHERE f.intern_id = $1 ORDER BY f.created_at DESC',
       [req.params.internId]
     );
     res.json(rows);
   } catch (err) {
+    console.error('Failed to fetch feedback:', err);
     res.status(500).json({ error: 'Failed to fetch feedback' });
   }
 });

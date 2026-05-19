@@ -40,15 +40,26 @@ PASSWORDS = {
     "default": hash_password("Hexa@2024")
 }
 
+generated_emails = set([
+    "hr@internflow.ai",
+    "employee@internflow.ai",
+    "intern@internflow.ai",
+    "mentor.engineering1@internflow.ai"
+])
+
 def create_fake_user(role, department=None):
-    first_name = fake.first_name()
-    last_name = fake.last_name()
     email_domain = "internflow.ai"
     
     if not department and role in ["mentor", "employee"]:
         department = random.choice(DEPARTMENTS)
     
-    email = f"{first_name.lower()}.{last_name.lower()}@{email_domain}"
+    while True:
+        first_name = fake.first_name()
+        last_name = fake.last_name()
+        email = f"{first_name.lower()}.{last_name.lower()}@{email_domain}"
+        if email not in generated_emails:
+            generated_emails.add(email)
+            break
     
     return {
         "id": uuid.uuid4(),
