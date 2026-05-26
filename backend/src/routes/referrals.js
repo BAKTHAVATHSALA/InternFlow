@@ -40,6 +40,54 @@ router.get('/quota', authenticate, authorize('employee'), async (req, res) => {
 
 /**
  * @swagger
+ * /api/referrals/my-offer:
+ *   get:
+ *     summary: Get the job offer for the authenticated intern
+ *     tags: [Referrals]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Referral and job details
+ */
+router.get('/my-offer', authenticate, authorize('intern'), async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT
+         r.id AS referral_id,
+         r.intern_name,
+         r.intern_email,
+         r.intern_college,
+         r.status AS referral_status,
+         r.created_at AS referred_at,
+         j.id AS job_id,
+         j.title,
+         j.department,
+         j.description,
+         j.tech_stack,
+         j.stipend,
+         j.duration_months,
+         j.mode,
+         j.location,
+         u.name AS referrer_name
+       FROM referrals r
+       JOIN jobs j ON j.id = r.job_id
+       JOIN users u ON u.id = r.employee_id
+       WHERE r.intern_id = $1
+       ORDER BY r.created_at DESC
+       LIMIT 1`,
+      [req.user.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'No referral found for this intern' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('Failed to fetch intern offer:', err);
+    res.status(500).json({ error: 'Failed to fetch offer details', detail: err.message });
+  }
+});
+
+/**
+ * @swagger
  * /api/referrals:
  *   post:
  *     summary: Submit a new intern referral
@@ -61,6 +109,7 @@ router.get('/quota', authenticate, authorize('employee'), async (req, res) => {
  *         description: Referral submitted
  */
 router.post('/', authenticate, authorize('employee'), async (req, res) => {
+  const client = await db.pool.connect();
   try {
     const {
       intern_name, intern_email, job_id,
@@ -68,14 +117,52 @@ router.post('/', authenticate, authorize('employee'), async (req, res) => {
       resume_url, note_to_hr
     } = req.body;
 
-    // 1. Create or find intern user
+    await client.query('BEGIN');
+
+    // 1. Check and fetch job details
+    const { rows: jobRows } = await client.query(
+      'SELECT title, stipend, duration_months, mode, location FROM jobs WHERE id = $1',
+      [job_id]
+    );
+    if (!jobRows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Job position not found' });
+    }
+    const job = jobRows[0];
+
+    // 2. Fetch and check referral quota
+    const cycle = getCurrentCycle();
+    const { rows: quotaRows } = await client.query(
+      `SELECT total_slots, used_slots 
+       FROM referral_quotas 
+       WHERE employee_id = $1 AND cycle_label = $2`,
+      [req.user.id, cycle]
+    );
+
+    let quota = quotaRows[0];
+    if (!quota) {
+      // First insert if no quota exists
+      const { rows: newQuota } = await client.query(
+        `INSERT INTO referral_quotas (employee_id, cycle_label, total_slots, used_slots, resets_at)
+         VALUES ($1, $2, 5, 0, NOW() + INTERVAL '30 days') RETURNING total_slots, used_slots`,
+        [req.user.id, cycle]
+      );
+      quota = newQuota[0];
+    }
+
+    if (quota.used_slots >= quota.total_slots) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Referral quota limit reached for this cycle.' });
+    }
+
+    // 3. Create or find intern user
     let internId;
-    const { rows: existing } = await db.query('SELECT id FROM users WHERE email = $1', [intern_email]);
+    const { rows: existing } = await client.query('SELECT id FROM users WHERE email = $1', [intern_email]);
 
     if (existing.length) {
       internId = existing[0].id;
     } else {
-      const { rows: newUser } = await db.query(
+      const { rows: newUser } = await client.query(
         `INSERT INTO users (email, name, role, status)
          VALUES ($1, $2, 'intern', 'invited') RETURNING id`,
         [intern_email, intern_name]
@@ -83,38 +170,76 @@ router.post('/', authenticate, authorize('employee'), async (req, res) => {
       internId = newUser[0].id;
     }
 
-    // 2. Create referral
-    const { rows: referral } = await db.query(
+    // 4. Create referral entry
+    const { rows: referral } = await client.query(
       `INSERT INTO referrals
        (employee_id, intern_id, job_id, status, intern_name, intern_email,
         intern_college, intern_degree, intern_grad_year, resume_url, note_to_hr)
        VALUES ($1,$2,$3,'pending',$4,$5,$6,$7,$8,$9,$10)
        RETURNING id`,
       [req.user.id, internId, job_id, intern_name, intern_email,
-       intern_college, intern_degree, intern_grad_year, resume_url, note_to_hr]
+       intern_college, intern_degree, intern_grad_year || null, resume_url, note_to_hr]
     );
     const referralId = referral[0].id;
 
-    // 3. Generate magic link (mock)
+    // 5. Update/Increment used slots in quota
+    const { rows: updatedQuota } = await client.query(
+      `UPDATE referral_quotas 
+       SET used_slots = used_slots + 1 
+       WHERE employee_id = $1 AND cycle_label = $2 
+       RETURNING total_slots, used_slots`,
+      [req.user.id, cycle]
+    );
+    const latestQuota = updatedQuota[0];
+
+    // 6. Generate magic link (mock)
     const magicToken = jwt.sign(
       { type: 'magic_link', email: intern_email, name: intern_name, role: 'intern' },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
 
-    // 4. Send invite email
+    // 7. Calculate applyBy date (1 month from now)
+    const applyByDate = new Date();
+    applyByDate.setDate(applyByDate.getDate() + 30);
+    const applyByFormatted = applyByDate.toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+
+    // 8. Send invite email to intern
     await email.sendReferralInvite({
       to: intern_email,
       internName: intern_name,
       referrerName: req.user.name,
-      roleName: 'Intern Position', // Simplified
-      magicLink: `${process.env.FRONTEND_URL}/login?token=${magicToken}`,
+      roleName: job.title,
+      stipend: job.stipend,
+      duration: job.duration_months || 6,
+      mode: job.mode || 'offline',
+      location: job.location || 'chennai',
+      applyBy: applyByFormatted
     });
 
-    res.status(201).json({ message: 'Referral submitted', referralId });
+    // 9. Send confirmation email to referrer (employee)
+    await email.sendReferralConfirmation({
+      to: req.user.email,
+      internName: intern_name,
+      roleName: job.title,
+      internEmail: intern_email,
+      referralId: referralId,
+      remainingSlots: latestQuota.total_slots - latestQuota.used_slots,
+      totalSlots: latestQuota.total_slots
+    });
+
+    await client.query('COMMIT');
+    res.status(201).json({ message: 'Referral submitted successfully', referralId });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to submit referral' });
+    await client.query('ROLLBACK');
+    console.error('Failed to process referral submission:', err);
+    res.status(500).json({ error: 'Failed to submit referral', detail: err.message });
+  } finally {
+    client.release();
   }
 });
 

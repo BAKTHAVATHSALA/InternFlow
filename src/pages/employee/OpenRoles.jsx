@@ -1,78 +1,81 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Briefcase, 
   MapPin, 
-  Clock, 
   Search, 
   Filter, 
-  Plus, 
   ArrowUpRight,
   Monitor,
   Database,
   Layout,
-  Smartphone
+  Globe,
+  Award,
+  Zap
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useNavigate } from 'react-router-dom';
+import api from '../../services/api';
+import toast from 'react-hot-toast';
 
-const rolesData = [
-  { 
-    id: 1, 
-    title: 'Product Design Intern', 
-    company: 'InternFlow', 
-    location: 'Remote', 
-    mode: 'Full-time', 
-    tech: ['Figma', 'Adobe XD', 'Prototyping'], 
-    stipend: '₹15,000/mo', 
-    duration: '3-6 Months',
-    icon: Layout,
-    color: 'bg-purple-100 text-purple-600'
-  },
-  { 
-    id: 2, 
-    title: 'Fullstack Dev Intern', 
-    company: 'InternFlow', 
-    location: 'Bangalore', 
-    mode: 'Hybrid', 
-    tech: ['React', 'Node.js', 'PostgreSQL'], 
-    stipend: '₹20,000/mo', 
-    duration: '6 Months',
-    icon: Monitor,
-    color: 'bg-blue-100 text-blue-600'
-  },
-  { 
-    id: 3, 
-    title: 'Backend Intern', 
-    company: 'InternFlow', 
-    location: 'Bangalore', 
-    mode: 'On-site', 
-    tech: ['Go', 'Docker', 'Redis'], 
-    stipend: '₹18,000/mo', 
-    duration: '3 Months',
-    icon: Database,
-    color: 'bg-emerald-100 text-emerald-600'
-  },
-];
+const getIconForDept = (dept) => {
+  const d = dept?.toLowerCase() || '';
+  if (d.includes('design')) return Layout;
+  if (d.includes('engineer') || d.includes('cyber')) return Monitor;
+  if (d.includes('data')) return Database;
+  if (d.includes('market')) return Globe;
+  if (d.includes('hr')) return Award;
+  return Briefcase;
+};
+
+const getColorForDept = (dept) => {
+  const d = dept?.toLowerCase() || '';
+  if (d.includes('design')) return 'bg-purple-100 text-purple-600';
+  if (d.includes('engineer')) return 'bg-blue-100 text-blue-600';
+  if (d.includes('cyber')) return 'bg-rose-100 text-rose-600';
+  if (d.includes('data')) return 'bg-emerald-100 text-emerald-600';
+  if (d.includes('market')) return 'bg-amber-100 text-amber-600';
+  if (d.includes('hr')) return 'bg-indigo-100 text-indigo-600';
+  return 'bg-slate-100 text-slate-600';
+};
 
 const OpenRoles = () => {
   const navigate = useNavigate();
+  const [roles, setRoles] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterDepartment, setFilterDepartment] = useState('All');
   const [showFilterMenu, setShowFilterMenu] = useState(false);
 
-  const filteredRoles = rolesData.filter(role => {
-    const matchesSearch = role.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          role.tech.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
+  useEffect(() => {
+    fetchRoles();
+  }, []);
+
+  const fetchRoles = async () => {
+    try {
+      const response = await api.get('/api/jobs');
+      setRoles(response.data);
+    } catch (err) {
+      toast.error('Failed to load open roles');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredRoles = roles.filter(role => {
+    const matchesSearch = 
+      role.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (role.tech_stack && role.tech_stack.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))) ||
+      (role.department && role.department.toLowerCase().includes(searchQuery.toLowerCase()));
     
-    // Using title as a proxy for department since dummy data doesn't have a department field, 
-    // or we can just filter by title matching some keywords if needed.
-    // Wait, the new DB seed has departments! But this is the frontend dummy data.
-    // Let's add a proxy department filter based on title or just add a generic 'department' check.
-    // Assuming the frontend will be connected to the API later, we'll pretend the role has a department field.
-    const matchesDept = filterDepartment === 'All' || (role.department && role.department === filterDepartment) || role.title.includes(filterDepartment);
+    const matchesDept = filterDepartment === 'All' || 
+      (role.department && role.department.toLowerCase() === filterDepartment.toLowerCase());
     
     return matchesSearch && matchesDept;
   });
+
+  if (loading) {
+    return <div className="p-8 text-center text-slate-500 animate-pulse font-medium">Loading open positions...</div>;
+  }
 
   return (
     <div className="space-y-8">
@@ -123,55 +126,63 @@ const OpenRoles = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredRoles.length > 0 ? filteredRoles.map((role) => (
-          <div key={role.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col hover:border-purple-200 transition-all hover:shadow-md group">
-            <div className="flex justify-between items-start mb-6">
-              <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center", role.color)}>
-                <role.icon size={24} />
-              </div>
-              <button className="p-2 text-slate-400 hover:text-purple-600 transition-colors">
-                <ArrowUpRight size={20} />
-              </button>
-            </div>
-            
-            <h3 className="text-lg font-bold text-slate-900 group-hover:text-purple-600 transition-colors mb-2">{role.title}</h3>
-            
-            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 font-medium mb-6">
-              <span className="flex items-center gap-1.5"><Briefcase size={12} /> {role.company}</span>
-              <span className="w-1 h-1 bg-slate-200 rounded-full" />
-              <span className="flex items-center gap-1.5"><MapPin size={12} /> {role.location}</span>
-              <span className="w-1 h-1 bg-slate-200 rounded-full" />
-              <span className="text-purple-600 font-bold">{role.mode}</span>
-            </div>
-
-            <div className="flex flex-wrap gap-2 mb-8">
-              {role.tech.map(tag => (
-                <span key={tag} className="px-2.5 py-1 bg-slate-50 border border-slate-100 rounded-lg text-[10px] font-bold text-slate-600 uppercase tracking-tight">
-                  {tag}
-                </span>
-              ))}
-            </div>
-
-            <div className="mt-auto space-y-4">
-              <div className="flex items-center justify-between p-3 bg-slate-50/50 rounded-xl border border-slate-100">
-                <div className="space-y-0.5">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Stipend</p>
-                  <p className="text-xs font-bold text-slate-900">{role.stipend}</p>
+        {filteredRoles.length > 0 ? filteredRoles.map((role) => {
+          const IconComponent = getIconForDept(role.department);
+          const colorClass = getColorForDept(role.department);
+          return (
+            <div key={role.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col hover:border-purple-200 transition-all hover:shadow-md group">
+              <div className="flex justify-between items-start mb-6">
+                <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center", colorClass)}>
+                  <IconComponent size={24} />
                 </div>
-                <div className="text-right space-y-0.5">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Duration</p>
-                  <p className="text-xs font-bold text-slate-900">{role.duration}</p>
-                </div>
+                <button className="p-2 text-slate-400 hover:text-purple-600 transition-colors">
+                  <ArrowUpRight size={20} />
+                </button>
               </div>
-              <button 
-                onClick={() => navigate('/refer')}
-                className="w-full py-3 bg-white border border-slate-200 text-purple-600 text-[10px] font-bold rounded-xl uppercase tracking-widest hover:bg-purple-600 hover:text-white hover:border-purple-600 transition-all shadow-sm group-hover:shadow-purple-100 shadow-transparent"
-              >
-                Refer Someone
-              </button>
+              
+              <h3 className="text-lg font-bold text-slate-900 group-hover:text-purple-600 transition-colors mb-2">{role.title}</h3>
+              
+              <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 font-medium mb-6">
+                <span className="flex items-center gap-1.5"><Briefcase size={12} /> InternFlow</span>
+                <span className="w-1 h-1 bg-slate-200 rounded-full" />
+                <span className="flex items-center gap-1.5"><MapPin size={12} /> {role.location || 'Remote'}</span>
+                <span className="w-1 h-1 bg-slate-200 rounded-full" />
+                <span className="text-purple-600 font-bold capitalize">{role.mode || 'Offline'}</span>
+              </div>
+
+              {role.tech_stack && role.tech_stack.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-8">
+                  {role.tech_stack.map(tag => (
+                    <span key={tag} className="px-2.5 py-1 bg-slate-50 border border-slate-100 rounded-lg text-[10px] font-bold text-slate-600 uppercase tracking-tight">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-auto space-y-4">
+                <div className="flex items-center justify-between p-3 bg-slate-50/50 rounded-xl border border-slate-100">
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Stipend</p>
+                    <p className="text-xs font-bold text-slate-900">
+                      {role.stipend === 0 ? 'Unpaid' : `₹${role.stipend.toLocaleString()}/mo`}
+                    </p>
+                  </div>
+                  <div className="text-right space-y-0.5">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Duration</p>
+                    <p className="text-xs font-bold text-slate-900">{role.duration_months || 6} Months</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => navigate('/refer', { state: { jobId: role.id } })}
+                  className="w-full py-3 bg-white border border-slate-200 text-purple-600 text-[10px] font-bold rounded-xl uppercase tracking-widest hover:bg-purple-600 hover:text-white hover:border-purple-600 transition-all shadow-sm group-hover:shadow-purple-100 shadow-transparent"
+                >
+                  Refer Someone
+                </button>
+              </div>
             </div>
-          </div>
-        )) : (
+          );
+        }) : (
           <div className="lg:col-span-3 py-20 text-center bg-white rounded-2xl border border-dashed border-slate-200">
             <p className="text-slate-400 font-medium">No roles found matching your search.</p>
           </div>

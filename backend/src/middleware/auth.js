@@ -11,16 +11,18 @@ const authenticate = async (req, res, next) => {
     const token = header.split(' ')[1];
     const payload = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Verify session still active in DB
+    // Verify session still active in DB and fetch user name
     const { rows } = await db.query(
-      'SELECT id FROM sessions WHERE id = $1 AND expires_at > NOW()',
+      `SELECT u.name FROM sessions s
+       JOIN users u ON u.id = s.user_id
+       WHERE s.id = $1 AND s.expires_at > NOW()`,
       [payload.sessionId]
     );
     if (!rows.length) {
       return res.status(401).json({ error: 'Session expired' });
     }
 
-    req.user = { id: payload.userId, email: payload.email, role: payload.role };
+    req.user = { id: payload.userId, email: payload.email, role: payload.role, name: rows[0].name };
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Invalid or expired token' });

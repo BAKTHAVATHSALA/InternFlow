@@ -2,6 +2,7 @@ const router = require('express').Router();
 const db = require('../db');
 const { authenticate, authorize } = require('../middleware/auth');
 const ai = require('../services/aiService');
+const email = require('../services/emailService');
 
 /**
  * @swagger
@@ -113,6 +114,144 @@ router.get('/mine', authenticate, authorize('intern'), async (req, res) => {
   } catch (err) {
     console.error('Failed to fetch application:', err);
     res.status(500).json({ error: 'Failed to fetch application' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/applications/onboard-apply:
+ *   post:
+ *     summary: Intern submits application from onboarding portal (synchronous AI screening)
+ *     tags: [Applications]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       201:
+ *         description: Application submitted with AI scores
+ */
+router.post('/onboard-apply', authenticate, authorize('intern'), async (req, res) => {
+  const client = await db.pool.connect();
+  try {
+    const {
+      firstName, lastName, phone, city,
+      college, degree, cgpa, gradYear,
+      skills = []
+    } = req.body;
+
+    await client.query('BEGIN');
+
+    // 1. Fetch intern's referral to get job_id and referral_id automatically
+    const { rows: refRows } = await client.query(
+      `SELECT r.id AS referral_id, r.job_id
+       FROM referrals r
+       WHERE r.intern_id = $1
+       ORDER BY r.created_at DESC LIMIT 1`,
+      [req.user.id]
+    );
+    if (!refRows.length) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'No referral found for this intern' });
+    }
+    const { referral_id, job_id } = refRows[0];
+
+    // 2. Fetch job details for AI screening
+    const { rows: jobRows } = await client.query(
+      'SELECT title, description FROM jobs WHERE id = $1', [job_id]
+    );
+    if (!jobRows.length) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Job not found' });
+    }
+    const job = jobRows[0];
+
+    // 3. Insert application
+    const { rows } = await client.query(
+      `INSERT INTO applications
+       (intern_id, job_id, referral_id, status,
+        first_name, last_name, phone, city,
+        college, degree, cgpa, grad_year, skills, resume_url)
+       VALUES ($1,$2,$3,'applied',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       RETURNING id`,
+      [req.user.id, job_id, referral_id,
+       firstName, lastName, phone, city,
+       college, degree, cgpa || null, gradYear || null, skills, '']
+    );
+    const applicationId = rows[0].id;
+
+    // 4. Update referral status
+    await client.query(
+      "UPDATE referrals SET status = 'applied' WHERE id = $1", [referral_id]
+    );
+
+    // 5. Run AI screening synchronously
+    const startTime = Date.now();
+    const aiResult = await ai.screenApplication({
+      first_name: firstName,
+      last_name: lastName,
+      skills,
+      college,
+      degree,
+      cgpa,
+      job_title: job.title,
+      job_description: job.description
+    });
+    const processedSeconds = ((Date.now() - startTime) / 1000).toFixed(1);
+
+    // 6. Save AI scores
+    await client.query(
+      `INSERT INTO ai_scores
+       (application_id, overall_score, skills_match, experience_fit,
+        strengths, gaps, improvement_tips, recommendation, raw_ai_response)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [applicationId,
+       aiResult.overall_score, aiResult.skills_match, aiResult.experience_fit,
+       aiResult.strengths || [], aiResult.gaps || [],
+       aiResult.improvement_tips || [], aiResult.recommendation,
+       JSON.stringify(aiResult)]
+    );
+
+    // 7. Mark application as screened
+    await client.query(
+      "UPDATE applications SET status = 'screened', screened_at = NOW() WHERE id = $1",
+      [applicationId]
+    );
+
+    await client.query('COMMIT');
+
+    // 8. Send HTML email to HR (fire-and-forget, don't block response)
+    email.sendAIScreeningResultToHR({
+      to: process.env.HR_EMAIL,
+      internName: `${firstName} ${lastName}`.trim(),
+      roleName: job.title,
+      overallScore: aiResult.overall_score,
+      skillsMatch: aiResult.skills_match || 0,
+      experienceFit: aiResult.experience_fit || 0,
+      strengths: aiResult.strengths || [],
+      gaps: aiResult.gaps || [],
+      recommendation: aiResult.recommendation,
+      applicationId,
+      processedSeconds: parseFloat(processedSeconds)
+    }).catch(err => console.error('[EMAIL] Failed to send HR screening email:', err));
+
+    res.status(201).json({
+      applicationId,
+      ai: {
+        overall_score: aiResult.overall_score,
+        skills_match: aiResult.skills_match || 0,
+        experience_fit: aiResult.experience_fit || 0,
+        strengths: aiResult.strengths || [],
+        gaps: aiResult.gaps || [],
+        improvement_tips: aiResult.improvement_tips || [],
+        recommendation: aiResult.recommendation,
+        processed_seconds: parseFloat(processedSeconds)
+      }
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('onboard-apply failed:', err);
+    res.status(500).json({ error: 'Failed to submit application', detail: err.message });
+  } finally {
+    client.release();
   }
 });
 

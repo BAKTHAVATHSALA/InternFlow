@@ -80,17 +80,17 @@ const Dashboard = () => {
         <div className="lg:col-span-2 space-y-6">
           <div className="card p-6">
             <h3 className="text-lg font-bold mb-6 text-slate-800">Intern Pipeline Funnel</h3>
-            <PipelineLineChart />
+            <PipelineLineChart data={pipeline} />
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="card p-6">
               <h3 className="text-lg font-bold mb-6 text-slate-800">Department Distribution</h3>
-              <DeptDonutChart />
+              <DeptDonutChart data={pipeline} />
             </div>
             <div className="card p-6">
               <h3 className="text-lg font-bold mb-6 text-slate-800">Onboarding vs Closures</h3>
-              <MonthlyBarChart />
+              <MonthlyBarChart data={pipeline} />
             </div>
           </div>
         </div>

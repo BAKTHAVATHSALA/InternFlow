@@ -12,8 +12,7 @@ import {
   Zap,
   ArrowUpRight,
   MessageSquare,
-  PlayCircle,
-  Rocket
+  PlayCircle
 } from 'lucide-react';
 import StatsCard from '../../components/StatsCard';
 import { cn } from '../../utils/cn';
@@ -90,41 +89,20 @@ const InternDashboardHome = () => {
 
   return (
     <div className="space-y-8 pb-10">
-      {/* Header + Recruitment Card */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-gradient-to-br from-slate-900 to-indigo-950 rounded-[2rem] p-10 text-white shadow-2xl relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-[100px] -mr-40 -mt-40 transition-all group-hover:bg-indigo-500/20 duration-1000" />
-          <div className="relative z-10 space-y-6">
-            <div className="space-y-2">
-              <h1 className="text-4xl font-black tracking-tight">Welcome back, {user?.name?.split(' ')[0] || 'Intern'} 👋</h1>
-              <p className="text-indigo-200 font-medium">{appData?.role || 'Intern'} at Hexaware Technologies</p>
-            </div>
-            <div className="flex items-center gap-4 pt-4">
-              <div className="px-4 py-2 bg-white/10 backdrop-blur-md rounded-xl border border-white/10 text-xs font-bold uppercase tracking-widest">
-                {appData?.status === 'onboarded' ? 'Active' : 'Onboarding'}
-              </div>
-              <div className="px-4 py-2 bg-emerald-500 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-emerald-500/20">
-                {appData?.status || 'Pending'}
-              </div>
-            </div>
+      {/* Header */}
+      <div className="bg-gradient-to-br from-slate-900 to-indigo-950 rounded-[2rem] p-10 text-white shadow-2xl relative overflow-hidden group">
+        <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-[100px] -mr-40 -mt-40 transition-all group-hover:bg-indigo-500/20 duration-1000" />
+        <div className="relative z-10 space-y-6">
+          <div className="space-y-2">
+            <h1 className="text-4xl font-black tracking-tight">Welcome back, {user?.name?.split(' ')[0] || 'Intern'} 👋</h1>
+            <p className="text-indigo-200 font-medium">{appData?.role || 'Intern'} at Hexaware Technologies</p>
           </div>
-        </div>
-
-        <div 
-          onClick={() => navigate('/intern-onboard')}
-          className="bg-indigo-600 rounded-[2rem] p-10 text-white shadow-2xl relative overflow-hidden group cursor-pointer hover:scale-[1.02] active:scale-95 transition-all duration-500"
-        >
-          <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20 group-hover:scale-150 transition-transform duration-700" />
-          <div className="relative z-10 flex flex-col justify-between h-full space-y-8">
-            <div className="w-14 h-14 bg-white/10 rounded-2xl flex items-center justify-center border border-white/20 shadow-xl group-hover:rotate-12 transition-transform duration-500">
-              <Rocket size={28} className="text-white" />
+          <div className="flex items-center gap-4 pt-4">
+            <div className="px-4 py-2 bg-white/10 backdrop-blur-md rounded-xl border border-white/10 text-xs font-bold uppercase tracking-widest">
+              {appData?.status === 'onboarded' ? 'Active' : 'Onboarding'}
             </div>
-            <div>
-              <h3 className="text-2xl font-bold tracking-tight">Onboarding Portal</h3>
-              <p className="text-indigo-100 text-sm mt-1 font-medium">Track your application & onboarding</p>
-            </div>
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-white/60 group-hover:text-white transition-colors">
-              View Status <ArrowUpRight size={16} />
+            <div className="px-4 py-2 bg-emerald-500 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-emerald-500/20">
+              {appData?.status || 'Pending'}
             </div>
           </div>
         </div>

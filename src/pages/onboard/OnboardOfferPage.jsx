@@ -1,91 +1,123 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Check, Target, ArrowRight } from 'lucide-react';
-import { cn } from '../../utils/cn';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Building2, Banknote, Calendar, Clock, MapPin, ArrowRight, ChevronRight, CheckCircle2, Gift, Loader2 } from 'lucide-react';
+import api from '../../services/api';
 
 const OnboardOfferPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [appData, setAppData] = useState(location.state?.offer || null);
+  const [loading, setLoading] = useState(!appData);
+
+  useEffect(() => {
+    if (appData) return;
+    const fetchApp = async () => {
+      try {
+        const token = localStorage.getItem('onboard_token');
+        const { data } = await api.get('/api/applications/mine', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (data.status !== 'offer_pending' && data.status !== 'onboarded') {
+          navigate('/intern-onboard/screening', { replace: true });
+          return;
+        }
+        setAppData(data);
+      } catch {
+        navigate('/intern-onboard/screening', { replace: true });
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchApp();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="max-w-3xl flex items-center justify-center py-32">
+        <Loader2 size={28} className="text-purple-500 animate-spin" />
+      </div>
+    );
+  }
+
+  const stipendVal = appData?.stipend == null
+    ? 'Not specified'
+    : appData.stipend === 0
+      ? 'Unpaid'
+      : `₹${Number(appData.stipend).toLocaleString()} / month`;
 
   const offerDetails = [
-    { label: 'Role', value: 'Software Engineer Intern' },
-    { label: 'Stipend', value: '₹25,000 / month' },
-    { label: 'Start Date', value: '15 June 2025' },
-    { label: 'Duration', value: '6 months' },
-    { label: 'Mode', value: 'Hybrid - Chennai' },
+    { label: 'Role',     value: appData?.role || appData?.title || 'Intern',          icon: Building2 },
+    { label: 'Stipend',  value: stipendVal,                                            icon: Banknote },
+    { label: 'Duration', value: appData?.duration_months ? `${appData.duration_months} months` : 'N/A', icon: Clock },
+    { label: 'Mode',     value: [appData?.mode, appData?.location].filter(Boolean).join(' · ') || 'N/A', icon: MapPin },
   ];
 
   return (
-    <div className="max-w-4xl mx-auto space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-[0.3em]">STEP 06 / 08</span>
-        </div>
-        <h1 className="text-4xl font-bold text-white tracking-tight">You've Received an Offer!</h1>
-        <p className="text-slate-400 font-medium">HR has reviewed your application and extended an offer</p>
+    <div className="max-w-3xl space-y-6">
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-xs font-medium">
+        <span className="text-purple-600 font-bold">Step 4 of 6</span>
+        <ChevronRight size={12} className="text-slate-300" />
+        <span className="text-slate-400">Offer Letter</span>
       </div>
 
-      {/* Progress Stepper (Local) */}
-      <div className="flex items-center justify-center gap-12 py-4">
-        {[
-          { label: 'Applied', status: 'completed' },
-          { label: 'Screened', status: 'completed' },
-          { label: 'Offered', status: 'active' },
-          { label: 'Joining', status: 'pending' },
-          { label: 'Onboard', status: 'pending' },
-        ].map((step, i) => (
-          <div key={i} className="flex items-center gap-12 last:gap-0">
-            <div className="flex flex-col items-center gap-3">
-              <div className={cn(
-                "w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all duration-500",
-                step.status === 'completed' ? "bg-emerald-500 border-emerald-500 text-white" :
-                step.status === 'active' ? "bg-indigo-600 border-indigo-400 text-white shadow-[0_0_20px_rgba(79,70,229,0.4)]" :
-                "bg-[#1a1c26] border-white/5 text-slate-600"
-              )}>
-                {step.status === 'completed' ? <Check size={20} strokeWidth={3} /> : 
-                 step.status === 'active' ? <Target size={20} /> : <div className="w-4 h-4 bg-white/5 rounded-sm" />}
-              </div>
-              <span className={cn(
-                "text-[10px] font-bold uppercase tracking-wider",
-                step.status === 'completed' ? "text-emerald-500" :
-                step.status === 'active' ? "text-indigo-400" :
-                "text-slate-600"
-              )}>{step.label}</span>
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">Your Offer Letter</h1>
+        <p className="text-sm text-slate-500 mt-1">Review and accept your internship offer.</p>
+      </div>
+
+      {/* Congratulations Banner */}
+      <div className="bg-gradient-to-r from-purple-600 to-violet-500 rounded-2xl p-8 text-white relative overflow-hidden">
+        <div className="absolute -right-10 -top-10 w-48 h-48 bg-white/10 rounded-full pointer-events-none" />
+        <div className="absolute right-4 bottom-0 w-28 h-28 bg-white/5 rounded-full pointer-events-none" />
+        <div className="relative z-10">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+              <Gift size={20} />
             </div>
-            {i < 4 && <div className="w-12 h-[2px] bg-white/5" />}
+            <span className="text-white/70 font-bold text-xs uppercase tracking-widest">Offer Extended</span>
           </div>
-        ))}
-      </div>
-
-      {/* Offer Card */}
-      <div className="bg-[#121420] rounded-3xl border border-emerald-500/20 p-10 space-y-10 shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-1 bg-emerald-500/30" />
-        
-        <div className="text-center space-y-4">
-          <div className="text-2xl">🎉</div>
-          <h2 className="text-2xl font-bold text-emerald-400">Offer Extended!</h2>
-          <p className="text-sm text-slate-400 font-medium max-w-lg mx-auto">
-            Congratulations Priya — Hexaware is excited to have you join as a Software Engineer Intern.
+          <h2 className="text-2xl font-black mb-2">Congratulations!</h2>
+          <p className="text-purple-100 text-sm leading-relaxed">
+            You've been selected for the <strong>{appData?.role || appData?.title || 'Intern'}</strong> role at
+            Hexaware Technologies. We're excited to have you on board!
           </p>
         </div>
+      </div>
 
-        <div className="space-y-1">
-          {offerDetails.map((detail, i) => (
-            <div key={i} className="flex items-center justify-between py-4 border-b border-white/5 last:border-0 px-2">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">{detail.label}</span>
-              <span className="text-sm font-bold text-white">{detail.value}</span>
+      {/* Offer Details */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-5">Offer Details</h3>
+        <div className="divide-y divide-slate-50">
+          {offerDetails.map(({ label, value, icon: Icon }) => (
+            <div key={label} className="flex items-center justify-between py-3.5 first:pt-0 last:pb-0">
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 bg-purple-50 rounded-lg flex items-center justify-center">
+                  <Icon size={13} className="text-purple-600" />
+                </div>
+                <span className="text-sm text-slate-500 font-medium">{label}</span>
+              </div>
+              <span className="text-sm font-bold text-slate-800">{value}</span>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="pt-8">
-        <button 
-          onClick={() => navigate('/intern-onboard/success')}
-          className="w-full py-5 bg-[#f1f1e6]/10 border border-white/5 text-slate-400 rounded-xl font-bold text-lg hover:bg-[#f1f1e6] hover:text-[#0a0c14] transition-all duration-500 flex items-center justify-center gap-3 group"
-        >
-          Accept & Continue to Joining Form <ArrowRight size={20} className="group-hover:translate-x-2 transition-transform" />
-        </button>
+      {/* Acceptance Notice */}
+      <div className="flex items-start gap-3 p-4 bg-emerald-50 border border-emerald-100 rounded-xl">
+        <CheckCircle2 size={17} className="text-emerald-600 shrink-0 mt-0.5" />
+        <p className="text-sm text-emerald-700 font-medium leading-relaxed">
+          By clicking Accept, you confirm your intent to join Hexaware Technologies as
+          a <strong>{appData?.role || appData?.title || 'Intern'}</strong>.
+        </p>
       </div>
+
+      <button
+        onClick={() => navigate('/intern-onboard/documents')}
+        className="w-full py-4 bg-gradient-to-r from-purple-600 to-violet-500 text-white rounded-xl font-bold shadow-lg shadow-purple-200 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2"
+      >
+        Accept &amp; Proceed to Documents <ArrowRight size={18} />
+      </button>
     </div>
   );
 };

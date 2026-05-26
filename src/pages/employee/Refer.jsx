@@ -9,21 +9,26 @@ import {
   GraduationCap,
   Briefcase,
   CheckCircle2,
-  ArrowRight,
   Award,
   FileText,
   X,
-  UserCheck
+  Users
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
+import { useLocation } from 'react-router-dom';
 
 const Refer = () => {
+  const location = useLocation();
   const [jobs, setJobs] = useState([]);
   const [departments, setDepartments] = useState({});
   const [quota, setQuota] = useState({ remaining: 0, total_slots: 5, used_slots: 0 });
   const [loading, setLoading] = useState(true);
+
+  // Mentor list and filtered department mentors
+  const [allMentors, setAllMentors] = useState([]);
+  const [filteredMentors, setFilteredMentors] = useState([]);
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -33,6 +38,8 @@ const Refer = () => {
     department: '',
     jobId: '',
     college: '',
+    yearOfStudy: '',
+    mentorId: '',
     note: ''
   });
 
@@ -44,16 +51,32 @@ const Refer = () => {
     fetchData();
   }, []);
 
+  // Filter mentors whenever department changes
+  useEffect(() => {
+    if (formData.department) {
+      const mentorsForDept = allMentors.filter(
+        m => m.department?.toLowerCase() === formData.department.toLowerCase()
+      );
+      setFilteredMentors(mentorsForDept);
+      setFormData(prev => ({ ...prev, mentorId: '' }));
+    } else {
+      setFilteredMentors([]);
+      setFormData(prev => ({ ...prev, mentorId: '' }));
+    }
+  }, [formData.department, allMentors]);
+
   const fetchData = async () => {
     try {
-      const [jobsRes, quotaRes] = await Promise.all([
+      const [jobsRes, quotaRes, mentorsRes] = await Promise.all([
         api.get('/api/jobs'),
-        api.get('/api/referrals/quota')
+        api.get('/api/referrals/quota'),
+        api.get('/api/mentor/list')
       ]);
       
       const jobsData = jobsRes.data;
       setJobs(jobsData);
       setQuota(quotaRes.data);
+      setAllMentors(mentorsRes.data);
 
       // Group jobs by department
       const depts = {};
@@ -62,6 +85,19 @@ const Refer = () => {
         depts[job.department].push(job);
       });
       setDepartments(depts);
+
+      // Prepopulate job & department if jobId is provided via location state
+      const targetJobId = location.state?.jobId;
+      if (targetJobId) {
+        const selectedJob = jobsData.find(j => j.id === targetJobId);
+        if (selectedJob) {
+          setFormData(prev => ({
+            ...prev,
+            department: selectedJob.department,
+            jobId: selectedJob.id
+          }));
+        }
+      }
     } catch (err) {
       toast.error('Failed to load referral data');
     } finally {
@@ -75,7 +111,7 @@ const Refer = () => {
 
   const handleDeptChange = (e) => {
     const dept = e.target.value;
-    setFormData({ ...formData, department: dept, jobId: '' });
+    setFormData({ ...formData, department: dept, jobId: '', mentorId: '' });
   };
 
   const handleFileChange = (e) => {
@@ -94,25 +130,31 @@ const Refer = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.firstName || !formData.email || !formData.jobId) {
+    if (!formData.firstName || !formData.email || !formData.jobId || !formData.yearOfStudy || !formData.mentorId) {
       toast.error('Please fill all required fields');
       return;
     }
     
     setIsSubmitting(true);
     try {
-      // In a real app, you would upload the resume to S3 first and get a URL
       const resumeUrl = resume ? 'https://example.com/resume.pdf' : null;
+
+      // Find selected mentor name
+      const selectedMentor = filteredMentors.find(m => m.id === formData.mentorId);
+      const mentorName = selectedMentor ? selectedMentor.name : 'Unassigned';
+
+      // Build rich notes to HR including year and chosen mentor
+      const fullNote = `Candidate Year of Study: ${formData.yearOfStudy}\nRecommended Mentor: ${mentorName}\n\nNotes:\n${formData.note}`;
 
       await api.post('/api/referrals', {
         intern_name: `${formData.firstName} ${formData.lastName}`,
         intern_email: formData.email,
         job_id: formData.jobId,
         intern_college: formData.college,
-        intern_degree: '', // Optional for now
+        intern_degree: formData.yearOfStudy, // Mapping Year of Study directly to degree field
         intern_grad_year: '',
         resume_url: resumeUrl,
-        note_to_hr: formData.note
+        note_to_hr: fullNote
       });
 
       toast.success('Referral submitted successfully!');
@@ -120,7 +162,7 @@ const Refer = () => {
       // Reset form
       setFormData({
         firstName: '', lastName: '', email: '', phone: '',
-        department: '', jobId: '', college: '', note: ''
+        department: '', jobId: '', college: '', yearOfStudy: '', mentorId: '', note: ''
       });
       removeResume();
       fetchData(); // Refresh quota
@@ -132,7 +174,7 @@ const Refer = () => {
   };
 
   if (loading) {
-    return <div className="animate-pulse">Loading referral form...</div>;
+    return <div className="p-8 text-center text-slate-500 animate-pulse font-medium">Loading referral form...</div>;
   }
 
   return (
@@ -204,6 +246,47 @@ const Refer = () => {
                   <option value="">Select Role</option>
                   {formData.department && departments[formData.department]?.map(job => (
                     <option key={job.id} value={job.id}>{job.title}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* College Year Selection */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1 flex items-center gap-2">
+                  <GraduationCap size={12} /> Year of Study *
+                </label>
+                <select 
+                  required
+                  name="yearOfStudy"
+                  value={formData.yearOfStudy}
+                  onChange={handleInputChange}
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:outline-none focus:ring-4 focus:ring-purple-500/10 focus:border-purple-500 appearance-none cursor-pointer"
+                >
+                  <option value="">Select Year</option>
+                  <option value="2nd Year">2nd Year</option>
+                  <option value="3rd Year">3rd Year</option>
+                  <option value="4th Year">4th Year</option>
+                </select>
+              </div>
+
+              {/* Preassigned Mentor Selection */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1 flex items-center gap-2">
+                  <Users size={12} /> Preassigned Mentor *
+                </label>
+                <select 
+                  required
+                  name="mentorId"
+                  value={formData.mentorId}
+                  onChange={handleInputChange}
+                  disabled={!formData.department}
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:outline-none focus:ring-4 focus:ring-purple-500/10 focus:border-purple-500 appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="">Select Mentor</option>
+                  {filteredMentors.map(mentor => (
+                    <option key={mentor.id} value={mentor.id}>
+                      {mentor.name} ({mentor.department})
+                    </option>
                   ))}
                 </select>
               </div>

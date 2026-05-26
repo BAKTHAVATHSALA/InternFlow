@@ -4,6 +4,27 @@ const { authenticate, authorize } = require('../middleware/auth');
 
 /**
  * @swagger
+ * /api/mentor/list:
+ *   get:
+ *     summary: Get all mentors
+ *     tags: [Mentor]
+ *     responses:
+ *       200:
+ *         description: List of mentors
+ */
+router.get('/list', authenticate, async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      "SELECT id, name, email, department FROM users WHERE role = 'mentor' ORDER BY name ASC"
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch mentors list' });
+  }
+});
+
+/**
+ * @swagger
  * /api/mentor/interns:
  *   get:
  *     summary: Mentor views all assigned interns with progress

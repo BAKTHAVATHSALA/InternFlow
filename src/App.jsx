@@ -70,9 +70,12 @@ import OnboardDocumentsPage from './pages/onboard/OnboardDocumentsPage';
 import OnboardSuccessPage from './pages/onboard/OnboardSuccessPage';
 
 import Login from './pages/Login';
+import OnboardingLogin from './pages/onboard/OnboardingLogin';
+import InternPortalLogin from './pages/intern/InternPortalLogin';
 
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { OnboardingAuthProvider } from './contexts/OnboardingAuthContext';
 
 const MainLayout = ({ isCollapsed, setIsCollapsed, role, user, getMenu, handleLogout }) => {
   return (
@@ -149,6 +152,19 @@ const AppRoutes = () => {
       <Routes>
         {/* Public Routes */}
         <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
+        <Route path="/intern/login" element={isAuthenticated && user?.role === 'intern' ? <Navigate to="/" replace /> : <InternPortalLogin />} />
+
+        {/* Onboarding Portal (Standalone — separate auth) */}
+        <Route path="/onboard/login" element={<OnboardingLogin />} />
+        <Route path="/intern-onboard" element={<InternOnboardLayout />}>
+          <Route path="job" element={<OnboardJobPage />} />
+          <Route path="application" element={<OnboardApplicationPage />} />
+          <Route path="screening" element={<OnboardAIScreeningPage />} />
+          <Route path="offer" element={<OnboardOfferPage />} />
+          <Route path="documents" element={<OnboardDocumentsPage />} />
+          <Route path="success" element={<OnboardSuccessPage />} />
+          <Route index element={<Navigate to="job" replace />} />
+        </Route>
         
         {/* Recruitment Portal (Standalone) */}
         <Route path="/recruitment">
@@ -217,16 +233,6 @@ const AppRoutes = () => {
             } 
           />
 
-          {/* Onboarding Portal (Inside Dashboard Layout) */}
-          <Route path="/intern-onboard" element={<InternOnboardLayout />}>
-            <Route path="job" element={<OnboardJobPage />} />
-            <Route path="application" element={<OnboardApplicationPage />} />
-            <Route path="screening" element={<OnboardAIScreeningPage />} />
-            <Route path="offer" element={<OnboardOfferPage />} />
-            <Route path="documents" element={<OnboardDocumentsPage />} />
-            <Route path="success" element={<OnboardSuccessPage />} />
-            <Route index element={<Navigate to="job" replace />} />
-          </Route>
         </Route>
 
         {/* Fallback */}
@@ -239,8 +245,10 @@ const AppRoutes = () => {
 const App = () => {
   return (
     <AuthProvider>
-      <Toaster position="top-right" />
-      <AppRoutes />
+      <OnboardingAuthProvider>
+        <Toaster position="top-right" />
+        <AppRoutes />
+      </OnboardingAuthProvider>
     </AuthProvider>
   );
 };

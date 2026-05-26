@@ -1,116 +1,281 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Check, Cpu, ArrowRight } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { ChevronRight, Zap, Clock, ArrowRight, CheckCircle2, Cpu, Circle, XCircle, RefreshCw } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import api from '../../services/api';
+
+const RECOMMENDATION_LABELS = {
+  strong_pass: 'Strong Pass — Excellent Fit',
+  pass: 'Pass — Recommended',
+  borderline: 'Borderline — Needs Review',
+  reject: 'Not Recommended',
+};
+
+const RECOMMENDATION_COLORS = {
+  strong_pass: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+  pass: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+  borderline: 'text-amber-700 bg-amber-50 border-amber-200',
+  reject: 'text-rose-700 bg-rose-50 border-rose-200',
+};
 
 const OnboardAIScreeningPage = () => {
   const navigate = useNavigate();
-  const [progress, setProgress] = useState(0);
+  const location = useLocation();
+  const [animated, setAnimated] = useState(false);
+  const [appStatus, setAppStatus] = useState('screened');
+  const [offer, setOffer] = useState(null);
+  const intervalRef = useRef(null);
+
+  const ai = location.state?.ai || {
+    overall_score: 0,
+    skills_match: 0,
+    experience_fit: 0,
+    strengths: [],
+    gaps: [],
+    improvement_tips: [],
+    recommendation: 'borderline',
+    processed_seconds: 0,
+  };
+
+  const fetchStatus = async () => {
+    try {
+      const token = localStorage.getItem('onboard_token');
+      const { data } = await api.get('/api/applications/mine', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setAppStatus(data.status);
+      if (data.status === 'offer_pending') {
+        setOffer(data);
+        clearInterval(intervalRef.current);
+      }
+      if (data.status === 'rejected') {
+        clearInterval(intervalRef.current);
+      }
+    } catch {
+      // silent — don't break the UI on poll failure
+    }
+  };
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setProgress(prev => (prev >= 100 ? 100 : prev + 2));
-    }, 30);
-    return () => clearInterval(timer);
+    const t = setTimeout(() => setAnimated(true), 300);
+    fetchStatus();
+    intervalRef.current = setInterval(fetchStatus, 8000);
+    return () => {
+      clearTimeout(t);
+      clearInterval(intervalRef.current);
+    };
   }, []);
 
   const scores = [
-    { label: 'Overall Match', value: 87, color: 'bg-emerald-500' },
-    { label: 'Skills Alignment', value: 91, color: 'bg-indigo-500' },
-    { label: 'Experience Fit', value: 74, color: 'bg-amber-500' },
+    { label: 'Overall Match',    value: ai.overall_score,  color: 'from-purple-500 to-violet-500', textColor: 'text-purple-600' },
+    { label: 'Skills Alignment', value: ai.skills_match,   color: 'from-emerald-400 to-emerald-500', textColor: 'text-emerald-600' },
+    { label: 'Experience Fit',   value: ai.experience_fit, color: 'from-amber-400 to-orange-400',   textColor: 'text-amber-600' },
   ];
 
-  return (
-    <div className="max-w-4xl mx-auto space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-[0.3em]">STEP 05 / 08</span>
+  const recommendLabel = RECOMMENDATION_LABELS[ai.recommendation] || 'Under Review';
+  const recommendClass = RECOMMENDATION_COLORS[ai.recommendation] || RECOMMENDATION_COLORS.borderline;
+
+  const hrDecided   = appStatus === 'offer_pending';
+  const hrRejected  = appStatus === 'rejected';
+  const waiting     = !hrDecided && !hrRejected;
+
+  const statusSteps = [
+    { label: 'Applied',    status: 'done' },
+    { label: 'AI Screened', status: 'done' },
+    { label: 'HR Review',  status: hrDecided ? 'done' : hrRejected ? 'rejected' : 'active' },
+    { label: 'Offer',      status: hrDecided ? 'active' : 'pending' },
+  ];
+
+  // Rejected state — full page
+  if (hrRejected) {
+    return (
+      <div className="max-w-3xl space-y-6">
+        <div className="flex items-center gap-2 text-xs font-medium">
+          <span className="text-rose-500 font-bold">Application Closed</span>
         </div>
-        <h1 className="text-4xl font-bold text-white tracking-tight">Application Submitted</h1>
-        <p className="text-slate-400 font-medium">AI is reviewing your resume right now</p>
+        <div className="bg-white rounded-2xl border border-rose-100 shadow-sm p-10 text-center">
+          <div className="w-16 h-16 bg-rose-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
+            <XCircle size={32} className="text-rose-500" />
+          </div>
+          <h1 className="text-2xl font-black text-slate-900 mb-3">Application Not Progressed</h1>
+          <p className="text-sm text-slate-500 leading-relaxed max-w-md mx-auto mb-6">
+            After reviewing your application, the HR team has decided not to move forward at this time.
+            Thank you for your interest in Hexaware Technologies.
+          </p>
+          <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl text-xs text-slate-400 font-medium">
+            You may be considered for future openings. Keep an eye on your referred email.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-3xl space-y-6">
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-xs font-medium">
+        <span className="text-purple-600 font-bold">Step 3 of 6</span>
+        <ChevronRight size={12} className="text-slate-300" />
+        <span className="text-slate-400">AI Resume Screening</span>
       </div>
 
-      {/* Progress Stepper (Local) */}
-      <div className="flex items-center justify-center gap-12 py-4">
-        {[
-          { label: 'Applied', status: 'completed' },
-          { label: 'Screened', status: 'active' },
-          { label: 'Offered', status: 'pending' },
-          { label: 'Joining', status: 'pending' },
-          { label: 'Onboard', status: 'pending' },
-        ].map((step, i) => (
-          <div key={i} className="flex items-center gap-12 last:gap-0">
-            <div className="flex flex-col items-center gap-3">
-              <div className={cn(
-                "w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all duration-500",
-                step.status === 'completed' ? "bg-emerald-500 border-emerald-500 text-white" :
-                step.status === 'active' ? "bg-indigo-600 border-indigo-400 text-white shadow-[0_0_20px_rgba(79,70,229,0.4)]" :
-                "bg-[#1a1c26] border-white/5 text-slate-600"
-              )}>
-                {step.status === 'completed' ? <Check size={20} strokeWidth={3} /> : 
-                 step.status === 'active' ? <Cpu size={20} /> : <div className="w-4 h-4 bg-white/5 rounded-sm" />}
-              </div>
-              <span className={cn(
-                "text-[10px] font-bold uppercase tracking-wider",
-                step.status === 'completed' ? "text-emerald-500" :
-                step.status === 'active' ? "text-indigo-400" :
-                "text-slate-600"
-              )}>{step.label}</span>
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">AI Screening Results</h1>
+        <p className="text-sm text-slate-500 mt-1">Your profile has been analyzed against the role requirements.</p>
+      </div>
+
+      {/* Score Cards */}
+      <div className="grid grid-cols-3 gap-4">
+        {scores.map(s => (
+          <div key={s.label} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 text-center">
+            <div className={cn('text-3xl font-black mb-1', s.textColor)}>{s.value}%</div>
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-tight">{s.label}</div>
+            <div className="mt-3 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className={cn('h-full bg-gradient-to-r rounded-full transition-all duration-1000 ease-out', s.color)}
+                style={{ width: animated ? `${s.value}%` : '0%' }}
+              />
             </div>
-            {i < 4 && <div className="w-12 h-[2px] bg-white/5" />}
           </div>
         ))}
       </div>
 
-      {/* AI Results Card */}
-      <div className="bg-[#121420] rounded-3xl border border-white/5 p-10 space-y-10 shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-indigo-500/5 rounded-full blur-[80px] -mt-32" />
-        
-        <div className="text-center space-y-2 relative z-10">
-          <div className="w-14 h-14 bg-indigo-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-indigo-500/20">
-             <div className="w-8 h-8 bg-indigo-500 rounded-full flex items-center justify-center animate-pulse">
-                <div className="w-4 h-4 bg-white rounded-full opacity-50" />
-             </div>
+      {/* AI Insight */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-9 h-9 bg-purple-100 rounded-xl flex items-center justify-center">
+            <Zap size={16} className="text-purple-600" />
           </div>
-          <h2 className="text-xl font-bold text-white">AI Resume Review Complete</h2>
-          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Processed in 2.3 seconds • Powered by Advanced AI</p>
+          <h3 className="font-bold text-slate-900">AI Insight</h3>
+          {ai.processed_seconds > 0 && (
+            <span className="text-[10px] text-slate-400 font-medium ml-auto">
+              Processed in {ai.processed_seconds}s
+            </span>
+          )}
         </div>
 
-        <div className="space-y-8 relative z-10">
-          {scores.map((score, i) => (
-            <div key={i} className="space-y-3">
-              <div className="flex justify-between items-end">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{score.label}</span>
-                <span className={cn("text-sm font-bold", score.color.replace('bg-', 'text-'))}>{score.value}%</span>
+        <div className={cn('inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold mb-4', recommendClass)}>
+          <CheckCircle2 size={12} />
+          {recommendLabel}
+        </div>
+
+        {ai.strengths?.length > 0 && (
+          <div className="mb-3">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Strengths</p>
+            <div className="flex flex-wrap gap-2">
+              {ai.strengths.map((s, i) => (
+                <span key={i} className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-full border border-emerald-100">{s}</span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {ai.gaps?.length > 0 && (
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Skill Gaps</p>
+            <div className="flex flex-wrap gap-2">
+              {ai.gaps.map((g, i) => (
+                <span key={i} className="px-2.5 py-1 bg-amber-50 text-amber-700 text-xs font-medium rounded-full border border-amber-100">{g}</span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* HR Decision Banner */}
+      {hrDecided ? (
+        <div className="flex items-start gap-4 p-5 bg-emerald-50 border border-emerald-200 rounded-2xl">
+          <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center shrink-0">
+            <CheckCircle2 size={20} className="text-emerald-600" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-emerald-800">HR has accepted your application!</p>
+            <p className="text-xs text-emerald-600 mt-0.5">Your offer letter is ready to review. Click below to proceed.</p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-start gap-4 p-5 bg-amber-50 border border-amber-100 rounded-2xl">
+          <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center shrink-0">
+            <RefreshCw size={18} className="text-amber-600 animate-spin" style={{ animationDuration: '3s' }} />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-amber-800">Waiting for HR Review</p>
+            <p className="text-xs text-amber-600 mt-0.5">
+              Your application is under review. This page will update automatically — no need to refresh.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Application Status Stepper */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center">
+            <Clock size={16} className="text-blue-600" />
+          </div>
+          <h3 className="font-bold text-slate-900">Application Status</h3>
+        </div>
+
+        <div className="flex items-center justify-between relative mb-5">
+          <div className="absolute left-0 right-0 top-4 h-0.5 bg-slate-100 z-0" />
+          <div
+            className="absolute left-0 top-4 h-0.5 bg-purple-400 z-0 transition-all duration-700"
+            style={{ width: hrDecided ? '100%' : '50%' }}
+          />
+          {statusSteps.map(step => (
+            <div key={step.label} className="flex flex-col items-center gap-2 z-10">
+              <div className={cn(
+                'w-8 h-8 rounded-full flex items-center justify-center border-2 bg-white transition-all',
+                step.status === 'done'     ? 'border-purple-500 bg-purple-500' :
+                step.status === 'active'   ? 'border-purple-500 ring-4 ring-purple-100' :
+                step.status === 'rejected' ? 'border-rose-400 bg-rose-400' :
+                'border-slate-200'
+              )}>
+                {step.status === 'done'
+                  ? <CheckCircle2 size={14} className="text-white" />
+                  : step.status === 'rejected'
+                    ? <XCircle size={14} className="text-white" />
+                    : step.status === 'active'
+                      ? <Cpu size={13} className="text-purple-600" />
+                      : <Circle size={10} className="text-slate-300" />
+                }
               </div>
-              <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                <div 
-                  className={cn("h-full transition-all duration-[1500ms]", score.color)} 
-                  style={{ width: `${progress >= 100 ? score.value : 0}%` }}
-                />
-              </div>
+              <span className={cn(
+                'text-[10px] font-bold uppercase tracking-wider whitespace-nowrap',
+                step.status === 'done'     ? 'text-purple-600' :
+                step.status === 'active'   ? 'text-purple-700' :
+                step.status === 'rejected' ? 'text-rose-500' :
+                'text-slate-300'
+              )}>
+                {step.label}
+              </span>
             </div>
           ))}
         </div>
 
-        {/* AI Insight Box */}
-        <div className="bg-[#0a0c14] rounded-2xl p-6 border border-white/5 space-y-3">
-          <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">AI Insight</p>
-          <p className="text-xs text-slate-400 leading-relaxed font-medium">
-            Strong <span className="text-white">React + Node.js</span> profile. CGPA above threshold. 2 skill gaps: Docker, CI/CD. Recommend for HR review.
-          </p>
-        </div>
+        <p className="text-xs text-slate-400 font-medium text-center">
+          {waiting
+            ? 'HR will review your application and respond within 2–3 business days'
+            : 'Your offer letter is ready — proceed to accept your internship'}
+        </p>
       </div>
 
-      <div className="text-center space-y-8">
-        <p className="text-xs text-slate-500 font-medium">HR will review and respond within 2–3 business days</p>
-        <button 
-          onClick={() => navigate('/intern-onboard/offer')}
-          className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] hover:text-white transition-all flex items-center gap-2 mx-auto"
-        >
-          → Skip to HR Decision (demo)
-        </button>
-      </div>
+      <button
+        onClick={() => navigate('/intern-onboard/offer', { state: { offer } })}
+        disabled={!hrDecided}
+        className={cn(
+          'w-full py-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2',
+          hrDecided
+            ? 'bg-gradient-to-r from-purple-600 to-violet-500 text-white shadow-lg shadow-purple-200 hover:scale-[1.01] active:scale-[0.99]'
+            : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+        )}
+      >
+        {waiting ? (
+          <><Clock size={18} /> Waiting for HR Decision…</>
+        ) : (
+          <>View Offer Letter <ArrowRight size={18} /></>
+        )}
+      </button>
     </div>
   );
 };
