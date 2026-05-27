@@ -79,20 +79,20 @@ const OpenRoles = () => {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Open Roles</h1>
-          <p className="text-slate-500 mt-1 font-medium">Find roles to refer your contacts to.</p>
+          <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">Open Roles</h1>
+          <p className="text-slate-500 mt-1 font-medium text-sm md:text-base">Find roles to refer your contacts to.</p>
         </div>
-        <div className="flex gap-3 relative">
-          <div className="relative group">
+        <div className="flex gap-3 relative w-full sm:w-auto">
+          <div className="relative group flex-1 sm:flex-none">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 group-focus-within:text-purple-500 transition-colors" />
-            <input 
-              type="text" 
-              placeholder="Search roles or skills..." 
+            <input
+              type="text"
+              placeholder="Search roles or skills..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 w-64" 
+              className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 w-full sm:w-64"
             />
           </div>
           <button 

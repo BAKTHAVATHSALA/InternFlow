@@ -114,10 +114,13 @@ router.post('/', authenticate, authorize('employee'), async (req, res) => {
     const {
       intern_name, intern_email, job_id,
       intern_college, intern_degree, intern_grad_year,
-      resume_url, note_to_hr
+      resume_url, note_to_hr, mentor_id
     } = req.body;
 
     await client.query('BEGIN');
+
+    // Ensure mentor_id column exists (safe to run repeatedly)
+    await client.query(`ALTER TABLE referrals ADD COLUMN IF NOT EXISTS mentor_id UUID`);
 
     // 1. Check and fetch job details
     const { rows: jobRows } = await client.query(
@@ -174,11 +177,11 @@ router.post('/', authenticate, authorize('employee'), async (req, res) => {
     const { rows: referral } = await client.query(
       `INSERT INTO referrals
        (employee_id, intern_id, job_id, status, intern_name, intern_email,
-        intern_college, intern_degree, intern_grad_year, resume_url, note_to_hr)
-       VALUES ($1,$2,$3,'pending',$4,$5,$6,$7,$8,$9,$10)
+        intern_college, intern_degree, intern_grad_year, resume_url, note_to_hr, mentor_id)
+       VALUES ($1,$2,$3,'pending',$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING id`,
       [req.user.id, internId, job_id, intern_name, intern_email,
-       intern_college, intern_degree, intern_grad_year || null, resume_url, note_to_hr]
+       intern_college, intern_degree, intern_grad_year || null, resume_url, note_to_hr, mentor_id || null]
     );
     const referralId = referral[0].id;
 
@@ -258,9 +261,18 @@ router.post('/', authenticate, authorize('employee'), async (req, res) => {
 router.get('/mine', authenticate, authorize('employee'), async (req, res) => {
   try {
     const { rows } = await db.query(
-      `SELECT r.*, j.title AS role
+      `SELECT r.*, j.title AS role,
+         a.status AS application_status,
+         a.id AS application_id,
+         sc.overall_score AS ai_score,
+         rw.id AS reward_id,
+         rw.amount AS reward_amount,
+         rw.status AS reward_status
        FROM referrals r
        JOIN jobs j ON j.id = r.job_id
+       LEFT JOIN applications a ON a.referral_id = r.id
+       LEFT JOIN ai_scores sc ON sc.application_id = a.id
+       LEFT JOIN rewards rw ON rw.referral_id = r.id
        WHERE r.employee_id = $1
        ORDER BY r.created_at DESC`,
       [req.user.id]

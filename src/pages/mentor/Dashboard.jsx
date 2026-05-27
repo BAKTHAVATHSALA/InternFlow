@@ -21,7 +21,7 @@ const Dashboard = () => {
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Mentor Dashboard</h1>
+        <h1 className="page-title">Mentor Dashboard</h1>
         <p className="text-slate-500 mt-1 font-medium">Welcome back, Dr. Robert Fox. Here's your overview for today.</p>
       </div>
 
@@ -73,17 +73,17 @@ const Dashboard = () => {
                 In Training
               </span>
             </div>
-            <div className="p-8">
-              <div className="flex flex-col md:flex-row gap-8 items-start">
-                <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-purple-100 to-violet-100 border border-purple-200 flex items-center justify-center text-purple-600 font-bold text-3xl shadow-inner shrink-0">
+            <div className="p-5 md:p-8">
+              <div className="flex flex-col sm:flex-row gap-5 md:gap-8 items-start">
+                <div className="w-16 h-16 md:w-24 md:h-24 rounded-2xl bg-gradient-to-br from-purple-100 to-violet-100 border border-purple-200 flex items-center justify-center text-purple-600 font-bold text-2xl md:text-3xl shadow-inner shrink-0">
                   AR
                 </div>
-                <div className="flex-1 space-y-6 w-full">
+                <div className="flex-1 space-y-4 md:space-y-6 w-full min-w-0">
                   <div>
-                    <h4 className="text-2xl font-bold text-slate-900">Alex Rivera</h4>
-                    <p className="text-slate-500 font-medium">Frontend Developer Intern</p>
+                    <h4 className="text-xl md:text-2xl font-bold text-slate-900">Alex Rivera</h4>
+                    <p className="text-slate-500 font-medium text-sm md:text-base">Frontend Developer Intern</p>
                   </div>
-                  
+
                   <div className="flex flex-wrap gap-2">
                     {['React.js', 'Tailwind CSS', 'TypeScript'].map(skill => (
                       <span key={skill} className="px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-600">
@@ -92,7 +92,7 @@ const Dashboard = () => {
                     ))}
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 py-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-8 py-2">
                     <div className="space-y-3">
                       <div className="flex justify-between items-center text-xs font-bold">
                         <span className="text-slate-400 uppercase tracking-wider">LMS Progress</span>
@@ -115,19 +115,19 @@ const Dashboard = () => {
                     </div>
                   </div>
 
-                  <div className="flex gap-4 pt-4">
-                    <button 
+                  <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                    <button
                       onClick={() => navigate('/reviews')}
-                      className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-violet-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-purple-200 hover:scale-[1.02] transition-transform flex items-center justify-center gap-2"
+                      className="flex-1 px-4 md:px-6 py-2.5 md:py-3 bg-gradient-to-r from-purple-600 to-violet-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-purple-200 hover:scale-[1.02] transition-transform flex items-center justify-center gap-2"
                     >
-                      <CheckSquare size={18} />
+                      <CheckSquare size={16} />
                       Review Submission
                     </button>
-                    <button 
+                    <button
                       onClick={() => navigate('/feedback')}
-                      className="flex-1 px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                      className="flex-1 px-4 md:px-6 py-2.5 md:py-3 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
                     >
-                      <MessageSquare size={18} />
+                      <MessageSquare size={16} />
                       Send Feedback
                     </button>
                   </div>
@@ -197,7 +197,7 @@ const Dashboard = () => {
           </div>
 
           {/* AI Resume Score Card */}
-          <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-2xl p-8 text-white shadow-xl shadow-indigo-100">
+          <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-2xl card-padding text-white shadow-xl shadow-indigo-100">
             <h3 className="font-bold uppercase tracking-widest text-[10px] text-indigo-300 mb-8">AI Resume Score</h3>
             <div className="flex flex-col items-center justify-center space-y-6 py-4">
               <div className="relative w-32 h-32 flex items-center justify-center">

@@ -46,7 +46,8 @@ export const PipelineLineChart = ({ data = [] }) => {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
+    <div className="h-[220px] sm:h-[280px] md:h-[300px] w-full">
+    <ResponsiveContainer width="100%" height="100%">
       <LineChart data={chartData}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} dy={10} />
@@ -57,6 +58,7 @@ export const PipelineLineChart = ({ data = [] }) => {
         <Line type="monotone" dataKey="value" stroke="#8b5cf6" strokeWidth={3} dot={{fill: '#8b5cf6', strokeWidth: 2, r: 4}} activeDot={{r: 6}} />
       </LineChart>
     </ResponsiveContainer>
+    </div>
   );
 };
 
@@ -72,7 +74,8 @@ export const DeptDonutChart = ({ data = [] }) => {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
+    <div className="h-[220px] sm:h-[280px] md:h-[300px] w-full">
+    <ResponsiveContainer width="100%" height="100%">
       <PieChart>
         <Pie
           data={chartData}
@@ -91,6 +94,7 @@ export const DeptDonutChart = ({ data = [] }) => {
         <Legend verticalAlign="bottom" height={36}/>
       </PieChart>
     </ResponsiveContainer>
+    </div>
   );
 };
 
@@ -129,7 +133,8 @@ export const MonthlyBarChart = ({ data = [] }) => {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
+    <div className="h-[220px] sm:h-[280px] md:h-[300px] w-full">
+    <ResponsiveContainer width="100%" height="100%">
       <BarChart data={chartData}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} dy={10} />
@@ -141,5 +146,6 @@ export const MonthlyBarChart = ({ data = [] }) => {
         <Bar dataKey="closures" fill="#ddd6fe" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
+    </div>
   );
 };

@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon --delay 1 src/index.js",
+    "kill-port": "FOR /F \"tokens=5\" %P IN ('netstat -ano ^| findstr :4000 ^| findstr LISTENING') DO taskkill /PID %P /F 2>nul & exit 0",
+    "dev": "npm run kill-port & nodemon --delay 1 src/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

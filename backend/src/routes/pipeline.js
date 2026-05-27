@@ -40,6 +40,8 @@ router.get('/', authenticate, authorize('hr', 'admin'), async (req, res) => {
 // GET /api/pipeline/:id — full candidate profile for drawer
 router.get('/:id', authenticate, authorize('hr', 'admin'), async (req, res) => {
   try {
+    await db.query(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS credentials_issued_at TIMESTAMPTZ`);
+    await db.query(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS ppo_offered_at TIMESTAMPTZ`);
     const { rows } = await db.query(
       `SELECT
          a.id                    AS application_id,
@@ -72,7 +74,11 @@ router.get('/:id', authenticate, authorize('hr', 'admin'), async (req, res) => {
          a.applied_at,
          a.screened_at,
          a.offered_at,
-         a.onboarded_at
+         a.onboarded_at,
+         a.credentials_issued_at,
+         (a.credentials_issued_at IS NOT NULL) AS credentials_issued,
+         a.ppo_offered_at,
+         (a.ppo_offered_at IS NOT NULL) AS ppo_offered
        FROM applications a
        JOIN users u  ON u.id  = a.intern_id
        JOIN jobs  j  ON j.id  = a.job_id
@@ -238,8 +244,9 @@ router.patch('/:id/stage', authenticate, authorize('hr', 'admin'), async (req, r
     const { rows: old } = await client.query('SELECT status, intern_id FROM applications WHERE id = $1', [appId]);
     if (!old.length) return res.status(404).json({ error: 'Application not found' });
 
+    const onboardedAt = status === 'onboarded' ? ', onboarded_at = NOW()' : '';
     await client.query(
-      `UPDATE applications SET status = $1, hr_note = COALESCE($2, hr_note), updated_at = NOW() WHERE id = $3`,
+      `UPDATE applications SET status = $1, hr_note = COALESCE($2, hr_note), updated_at = NOW()${onboardedAt} WHERE id = $3`,
       [status, hr_note, appId]
     );
 
@@ -254,6 +261,48 @@ router.patch('/:id/stage', authenticate, authorize('hr', 'admin'), async (req, r
       `INSERT INTO notifications (user_id, type, title, message) VALUES ($1,'stage_changed','Application Update',$2)`,
       [old[0].intern_id, `Your application status has been updated to: ${status.replace(/_/g, ' ')}.`]
     );
+
+    // When onboarded: sync referral status, assign mentor, credit reward, notify
+    if (status === 'onboarded') {
+      const { rows: refUpdate } = await client.query(
+        `UPDATE referrals SET status = 'onboarded'
+         WHERE id = (SELECT referral_id FROM applications WHERE id = $1 AND referral_id IS NOT NULL)
+         RETURNING id, employee_id, mentor_id`,
+        [appId]
+      );
+
+      if (refUpdate.length) {
+        const { id: referralId, employee_id, mentor_id } = refUpdate[0];
+
+        // Assign the mentor the employee selected during referral submission
+        if (mentor_id) {
+          await client.query(
+            `INSERT INTO mentor_assignments (mentor_id, intern_id, application_id)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (intern_id) DO UPDATE SET mentor_id = EXCLUDED.mentor_id, assigned_at = NOW()`,
+            [mentor_id, old[0].intern_id, appId]
+          );
+        }
+
+        if (employee_id) {
+          const { rows: existing } = await client.query(
+            'SELECT id FROM rewards WHERE referral_id = $1', [referralId]
+          );
+          if (!existing.length) {
+            await client.query(
+              `INSERT INTO rewards (employee_id, referral_id, amount, status, credited_at)
+               VALUES ($1, $2, 5000, 'pending', NOW())`,
+              [employee_id, referralId]
+            );
+            await client.query(
+              `INSERT INTO notifications (user_id, type, title, message)
+               VALUES ($1, 'reward_credited', 'Reward Earned!', 'Your referred intern has been onboarded! ₹5,000 reward has been credited to your account.')`,
+              [employee_id]
+            );
+          }
+        }
+      }
+    }
 
     await client.query('COMMIT');
     res.json({ message: 'Stage updated successfully' });
@@ -281,14 +330,18 @@ router.post('/:id/issue-credentials', authenticate, authorize('hr', 'admin'), as
          COALESCE(NULLIF(TRIM(CONCAT(a.first_name, ' ', a.last_name)), ''), u.name) AS intern_name,
          u.email AS intern_email,
          a.status,
+         a.credentials_issued_at,
          j.title AS role,
-         m.name  AS mentor_name,
-         m.role  AS mentor_role
+         COALESCE(m.name,  rm.name)  AS mentor_name,
+         COALESCE(m.role,  rm.role)  AS mentor_role,
+         COALESCE(ma.mentor_id, r.mentor_id) AS resolved_mentor_id
        FROM applications a
        JOIN users u ON u.id = a.intern_id
        JOIN jobs  j ON j.id = a.job_id
+       LEFT JOIN referrals r           ON r.id  = a.referral_id
        LEFT JOIN mentor_assignments ma ON ma.intern_id = a.intern_id
-       LEFT JOIN users m ON m.id = ma.mentor_id
+       LEFT JOIN users m  ON m.id  = ma.mentor_id
+       LEFT JOIN users rm ON rm.id = r.mentor_id
        WHERE a.id = $1`,
       [appId]
     );
@@ -298,6 +351,21 @@ router.post('/:id/issue-credentials', authenticate, authorize('hr', 'admin'), as
 
     if (app.status !== 'onboarded') {
       return res.status(400).json({ error: 'Credentials can only be issued to onboarded interns' });
+    }
+
+    // Check if credentials were already issued
+    if (app.credentials_issued_at) {
+      return res.status(400).json({ error: 'Credentials have already been issued for this intern' });
+    }
+
+    // Ensure mentor_assignment exists — upsert from referral's mentor_id if assignment is missing
+    if (app.resolved_mentor_id) {
+      await db.query(
+        `INSERT INTO mentor_assignments (mentor_id, intern_id, application_id)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (intern_id) DO UPDATE SET mentor_id = EXCLUDED.mentor_id, assigned_at = NOW()`,
+        [app.resolved_mentor_id, app.intern_id, appId]
+      );
     }
 
     // Generate credentials
@@ -337,6 +405,86 @@ router.post('/:id/issue-credentials', authenticate, authorize('hr', 'admin'), as
   } catch (err) {
     console.error('[ISSUE CREDENTIALS]', err);
     res.status(500).json({ error: 'Failed to issue credentials', detail: err.message });
+  }
+});
+
+// POST /api/pipeline/:id/ppo-offer — send PPO email only, no status change
+router.post('/:id/ppo-offer', authenticate, authorize('hr', 'admin'), async (req, res) => {
+  try {
+    await db.query(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS ppo_offered_at TIMESTAMPTZ`);
+
+    const { rows } = await db.query(
+      `SELECT
+         COALESCE(NULLIF(TRIM(CONCAT(a.first_name, ' ', a.last_name)), ''), u.name) AS intern_name,
+         u.email AS intern_email,
+         j.title AS role,
+         a.status,
+         a.ppo_offered_at,
+         COALESCE(m.name, rm.name) AS mentor_name
+       FROM applications a
+       JOIN users u ON u.id = a.intern_id
+       JOIN jobs j ON j.id = a.job_id
+       LEFT JOIN referrals r ON r.id = a.referral_id
+       LEFT JOIN mentor_assignments ma ON ma.intern_id = a.intern_id
+       LEFT JOIN users m ON m.id = ma.mentor_id
+       LEFT JOIN users rm ON rm.id = r.mentor_id
+       WHERE a.id = $1`,
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Application not found' });
+    const app = rows[0];
+
+    if (app.status !== 'completed') {
+      return res.status(400).json({ error: 'PPO can only be offered to completed interns' });
+    }
+
+    await db.query(
+      `UPDATE applications SET ppo_offered_at = NOW() WHERE id = $1`,
+      [req.params.id]
+    );
+
+    email.sendPPOEmail({
+      to: app.intern_email,
+      internName: app.intern_name,
+      roleName: app.role,
+      mentorName: app.mentor_name || null,
+    }).catch(err => console.error('[PPO EMAIL]', err));
+
+    await db.query(
+      `INSERT INTO audit_trail (user_id, user_email, user_role, action, entity_type, entity_id, module, old_value, new_value)
+       VALUES ($1,$2,$3,'PPO_OFFERED','application',$4,$5,$6,$7)`,
+      [req.user.id, req.user.email, req.user.role, req.params.id,
+       'Pipeline', JSON.stringify({ status: 'completed' }), JSON.stringify({ ppo_offered: true })]
+    );
+
+    res.json({ message: 'PPO offer email sent' });
+  } catch (err) {
+    console.error('[PPO OFFER]', err);
+    res.status(500).json({ error: 'Failed to send PPO offer', detail: err.message });
+  }
+});
+
+// POST /api/pipeline/backfill-mentor-assignments
+// Backfills mentor_assignments for all onboarded interns that have a mentor_id on their referral
+// but no mentor_assignments record. Safe to run multiple times (ON CONFLICT DO NOTHING).
+router.post('/backfill-mentor-assignments', authenticate, authorize('hr', 'admin'), async (req, res) => {
+  try {
+    const { rowCount } = await db.query(
+      `INSERT INTO mentor_assignments (mentor_id, intern_id, application_id)
+       SELECT DISTINCT r.mentor_id, a.intern_id, a.id
+       FROM applications a
+       JOIN referrals r ON r.id = a.referral_id
+       WHERE a.status IN ('onboarded', 'completed')
+         AND r.mentor_id IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM mentor_assignments ma WHERE ma.intern_id = a.intern_id
+         )
+       ON CONFLICT (intern_id) DO NOTHING`
+    );
+    res.json({ message: 'Backfill complete', assigned: rowCount });
+  } catch (err) {
+    console.error('[MENTOR BACKFILL]', err);
+    res.status(500).json({ error: 'Backfill failed', detail: err.message });
   }
 });
 

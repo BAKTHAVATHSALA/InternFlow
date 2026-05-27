@@ -37,7 +37,6 @@ import EmpRefer from './pages/employee/Refer';
 import EmpMyReferrals from './pages/employee/MyReferrals';
 import EmpOpenRoles from './pages/employee/OpenRoles';
 import EmpRewards from './pages/employee/Rewards';
-import EmpNotifications from './pages/employee/Notifications';
 // Mentor Pages
 import MentorDashboard from './pages/mentor/Dashboard';
 import MentorInterns from './pages/mentor/MyInterns';
@@ -78,16 +77,24 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { OnboardingAuthProvider } from './contexts/OnboardingAuthContext';
 
 const MainLayout = ({ isCollapsed, setIsCollapsed, role, user, getMenu, handleLogout }) => {
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
   return (
     <div className="flex min-h-screen bg-[#f8fafc]">
-      <Sidebar 
-        isCollapsed={isCollapsed} 
-        setIsCollapsed={setIsCollapsed} 
-        items={getMenu()} 
+      <Sidebar
+        isCollapsed={isCollapsed}
+        setIsCollapsed={setIsCollapsed}
+        items={getMenu()}
+        isMobileOpen={isMobileOpen}
+        setIsMobileOpen={setIsMobileOpen}
       />
-      <div className={`flex-1 flex flex-col transition-all duration-300 ${isCollapsed ? 'ml-20' : 'ml-[260px]'}`}>
-        <Navbar currentRole={role} onLogout={handleLogout} user={user} />
-        <main className="flex-1 p-8">
+      <div className={`flex-1 flex flex-col transition-all duration-300 ${isCollapsed ? 'md:ml-20' : 'md:ml-[260px]'}`}>
+        <Navbar
+          currentRole={role}
+          onLogout={handleLogout}
+          user={user}
+          onMobileMenuToggle={() => setIsMobileOpen(v => !v)}
+        />
+        <main className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8 max-w-[100vw] overflow-x-hidden safe-padding-x">
           <Outlet />
         </main>
       </div>
@@ -125,10 +132,9 @@ const AppRoutes = () => {
   const employeeMenu = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/', section: 'MAIN' },
     { icon: UserPlus, label: 'Refer an Intern', path: '/refer', section: 'MAIN' },
-    { icon: Users, label: 'My Referrals', path: '/my-referrals', badge: 2, section: 'MAIN' },
+    { icon: Users, label: 'My Referrals', path: '/my-referrals', section: 'MAIN' },
     { icon: Briefcase, label: 'Open Roles', path: '/open-roles', section: 'MAIN' },
     { icon: Award, label: 'Rewards', path: '/rewards', section: 'ACCOUNT' },
-    { icon: Bell, label: 'Notifications', path: '/notifications', badge: 4, section: 'ACCOUNT' },
   ];
 
   const internMenu = [
@@ -207,7 +213,6 @@ const AppRoutes = () => {
           <Route path="/my-referrals" element={<EmpMyReferrals />} />
           <Route path="/open-roles" element={<EmpOpenRoles />} />
           <Route path="/rewards" element={<EmpRewards />} />
-          <Route path="/notifications" element={<EmpNotifications />} />
 
           {/* Mentor Routes */}
           <Route path="/interns" element={<MentorInterns />} />
@@ -246,7 +251,7 @@ const App = () => {
   return (
     <AuthProvider>
       <OnboardingAuthProvider>
-        <Toaster position="top-right" />
+        <Toaster position="top-center" containerStyle={{ top: 8 }} toastOptions={{ style: { maxWidth: 'calc(100vw - 2rem)' } }} />
         <AppRoutes />
       </OnboardingAuthProvider>
     </AuthProvider>

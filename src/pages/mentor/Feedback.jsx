@@ -32,14 +32,14 @@ const pastFeedback = [
 
 const Feedback = () => {
   return (
-    <div className="space-y-8">
+    <div className="page-section">
       <div>
-        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Send Feedback</h1>
-        <p className="text-slate-500 mt-1 font-medium">Provide constructive feedback to your interns.</p>
+        <h1 className="page-title">Send Feedback</h1>
+        <p className="page-description">Provide constructive feedback to your interns.</p>
       </div>
 
       {/* Feedback Form */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm card-padding">
         <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-6">Create New Feedback</h3>
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -69,10 +69,10 @@ const Feedback = () => {
             />
           </div>
 
-          <div className="flex justify-end">
+          <div className="flex justify-stretch sm:justify-end">
             <button 
               onClick={() => alert('Feedback sent successfully!')}
-              className="px-8 py-3 bg-gradient-to-r from-purple-600 to-violet-500 text-white text-sm font-bold rounded-xl shadow-lg shadow-purple-200 hover:scale-[1.02] transition-all flex items-center gap-2"
+              className="w-full sm:w-auto px-8 py-3 bg-gradient-to-r from-purple-600 to-violet-500 text-white text-sm font-bold rounded-xl shadow-lg shadow-purple-200 hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
             >
               <Send size={18} />
               Send Feedback

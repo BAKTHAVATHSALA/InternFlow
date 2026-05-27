@@ -311,12 +311,13 @@ router.patch('/:id/stage', authenticate, authorize('hr', 'admin'), async (req, r
     await client.query('BEGIN');
 
     // Get old status for audit
-    const { rows: old } = await client.query('SELECT status FROM applications WHERE id = $1', [appId]);
+    const { rows: old } = await client.query('SELECT status, intern_id FROM applications WHERE id = $1', [appId]);
     if (!old.length) return res.status(404).json({ error: 'Application not found' });
 
-    // Update application
+    // Update application (set onboarded_at when onboarding)
+    const onboardedAt = status === 'onboarded' ? ', onboarded_at = NOW()' : '';
     await client.query(
-      `UPDATE applications SET status = $1, hr_note = COALESCE($2, hr_note), updated_at = NOW()
+      `UPDATE applications SET status = $1, hr_note = COALESCE($2, hr_note), updated_at = NOW()${onboardedAt}
        WHERE id = $3`,
       [status, hr_note, appId]
     );
@@ -328,13 +329,54 @@ router.patch('/:id/stage', authenticate, authorize('hr', 'admin'), async (req, r
       [req.user.id, req.user.email, req.user.role, appId, JSON.stringify({ status: old[0].status }), JSON.stringify({ status })]
     );
 
-    // Create notification for intern
-    const { rows: intern } = await client.query('SELECT intern_id FROM applications WHERE id = $1', [appId]);
+    // Notify intern
     await client.query(
       `INSERT INTO notifications (user_id, type, title, message)
        VALUES ($1, 'stage_changed', 'Application Update', $2)`,
-      [intern[0].intern_id, `Your application status has been updated to: ${status.replace('_', ' ')}.`]
+      [old[0].intern_id, `Your application status has been updated to: ${status.replace(/_/g, ' ')}.`]
     );
+
+    // When onboarded: sync referral status, assign mentor, credit reward, notify
+    if (status === 'onboarded') {
+      const { rows: refUpdate } = await client.query(
+        `UPDATE referrals SET status = 'onboarded'
+         WHERE id = (SELECT referral_id FROM applications WHERE id = $1 AND referral_id IS NOT NULL)
+         RETURNING id, employee_id, mentor_id`,
+        [appId]
+      );
+
+      if (refUpdate.length) {
+        const { id: referralId, employee_id, mentor_id } = refUpdate[0];
+
+        // Assign the mentor the employee selected during referral submission
+        if (mentor_id) {
+          await client.query(
+            `INSERT INTO mentor_assignments (mentor_id, intern_id, application_id)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (intern_id) DO UPDATE SET mentor_id = EXCLUDED.mentor_id, assigned_at = NOW()`,
+            [mentor_id, old[0].intern_id, appId]
+          );
+        }
+
+        if (employee_id) {
+          const { rows: existing } = await client.query(
+            'SELECT id FROM rewards WHERE referral_id = $1', [referralId]
+          );
+          if (!existing.length) {
+            await client.query(
+              `INSERT INTO rewards (employee_id, referral_id, amount, status, credited_at)
+               VALUES ($1, $2, 5000, 'pending', NOW())`,
+              [employee_id, referralId]
+            );
+            await client.query(
+              `INSERT INTO notifications (user_id, type, title, message)
+               VALUES ($1, 'reward_credited', 'Reward Earned!', 'Your referred intern has been onboarded! ₹5,000 reward has been credited to your account.')`,
+              [employee_id]
+            );
+          }
+        }
+      }
+    }
 
     await client.query('COMMIT');
     res.json({ message: 'Stage updated successfully' });

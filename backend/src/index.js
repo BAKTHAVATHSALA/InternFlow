@@ -53,6 +53,26 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`InternFlow API running on port ${PORT}`);
+
+  // Backfill mentor_assignments for existing onboarded interns whose referral has a mentor_id
+  try {
+    const db = require('./db');
+    const { rowCount } = await db.query(
+      `INSERT INTO mentor_assignments (mentor_id, intern_id, application_id)
+       SELECT DISTINCT r.mentor_id, a.intern_id, a.id
+       FROM applications a
+       JOIN referrals r ON r.id = a.referral_id
+       WHERE a.status IN ('onboarded', 'completed')
+         AND r.mentor_id IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM mentor_assignments ma WHERE ma.intern_id = a.intern_id
+         )
+       ON CONFLICT (intern_id) DO NOTHING`
+    );
+    if (rowCount > 0) console.log(`[STARTUP] Backfilled mentor assignments for ${rowCount} intern(s)`);
+  } catch (err) {
+    console.error('[STARTUP] Mentor backfill failed:', err.message);
+  }
 });

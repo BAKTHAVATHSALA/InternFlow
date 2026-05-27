@@ -151,10 +151,11 @@ const Refer = () => {
         intern_email: formData.email,
         job_id: formData.jobId,
         intern_college: formData.college,
-        intern_degree: formData.yearOfStudy, // Mapping Year of Study directly to degree field
+        intern_degree: formData.yearOfStudy,
         intern_grad_year: '',
         resume_url: resumeUrl,
-        note_to_hr: fullNote
+        note_to_hr: fullNote,
+        mentor_id: formData.mentorId || null
       });
 
       toast.success('Referral submitted successfully!');
@@ -178,16 +179,16 @@ const Refer = () => {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 md:space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Refer an Intern</h1>
-        <p className="text-slate-500 mt-1 font-medium">Help a talented student join InternFlow.</p>
+        <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">Refer an Intern</h1>
+        <p className="text-slate-500 mt-1 font-medium text-sm md:text-base">Help a talented student join InternFlow.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
         {/* Referral Form */}
         <div className="lg:col-span-2">
-          <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-8">
+          <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 md:p-8 space-y-6 md:space-y-8">
             <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Intern Information</h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -398,7 +399,7 @@ const Refer = () => {
               <h4 className="font-bold text-sm">Reward Program</h4>
             </div>
             <p className="text-xs text-indigo-100 leading-relaxed font-medium mb-6">
-              Earn <span className="text-white font-bold">₹2,500</span> for every successful onboarded referral. Rewards are issued within 48 hours of joining.
+              Earn <span className="text-white font-bold">₹5,000</span> for every successful onboarded referral. Rewards are issued within 48 hours of joining.
             </p>
             <div className="p-4 bg-white/5 rounded-xl border border-white/10">
               <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-2">

@@ -63,16 +63,46 @@ router.post('/provision', authenticate, authorize('hr', 'admin'), async (req, re
  */
 router.get('/', authenticate, authorize('hr', 'admin'), async (req, res) => {
   try {
+    await db.query(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS credentials_issued_at TIMESTAMPTZ`);
+    await db.query(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS work_email TEXT`);
+    await db.query(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS intern_code TEXT`);
+
     const { rows } = await db.query(`
-      SELECT u.id, u.name, u.email, a.status as app_status, 
-      EXISTS(SELECT 1 FROM documents d WHERE d.intern_id = u.id AND d.type = 'nda') as nda_signed,
-      EXISTS(SELECT 1 FROM credentials c WHERE c.intern_id = u.id) as credentials_issued
+      SELECT
+        u.id,
+        COALESCE(NULLIF(TRIM(CONCAT(a.first_name, ' ', a.last_name)), ''), u.name) AS name,
+        u.email,
+        a.id                          AS application_id,
+        a.status                      AS app_status,
+        j.title                       AS role,
+        j.department,
+        a.onboarded_at,
+        a.offered_at,
+        a.credentials_issued_at,
+        (a.credentials_issued_at IS NOT NULL) AS credentials_issued,
+        a.work_email,
+        a.intern_code,
+        EXISTS(
+          SELECT 1 FROM documents d WHERE d.intern_id = u.id AND d.type = 'nda'
+        )                             AS nda_signed,
+        m.name                        AS mentor_name
       FROM users u
       JOIN applications a ON a.intern_id = u.id
-      WHERE u.role = 'intern'
+      JOIN jobs j         ON j.id = a.job_id
+      LEFT JOIN mentor_assignments ma ON ma.intern_id = u.id
+      LEFT JOIN users m               ON m.id = ma.mentor_id
+      WHERE a.status IN ('offer_pending','onboarded','completed')
+      ORDER BY
+        CASE a.status
+          WHEN 'onboarded'     THEN 1
+          WHEN 'offer_pending' THEN 2
+          WHEN 'completed'     THEN 3
+        END,
+        a.onboarded_at DESC NULLS LAST
     `);
     res.json(rows);
   } catch (err) {
+    console.error('Onboarding list error:', err);
     res.status(500).json({ error: 'Failed to fetch onboarding list' });
   }
 });

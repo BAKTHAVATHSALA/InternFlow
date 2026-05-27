@@ -43,13 +43,13 @@ const Schedule = () => {
   ];
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="page-section">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Schedule</h1>
-          <p className="text-slate-500 mt-1 font-medium">Manage your meetings and review sessions.</p>
+          <h1 className="page-title">Schedule</h1>
+          <p className="page-description">Manage your meetings and review sessions.</p>
         </div>
-        <button className="px-6 py-3 bg-gradient-to-r from-purple-600 to-violet-500 text-white text-sm font-bold rounded-xl shadow-lg shadow-purple-200 hover:scale-[1.02] transition-all flex items-center gap-2">
+        <button className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-purple-600 to-violet-500 text-white text-sm font-bold rounded-xl shadow-lg shadow-purple-200 hover:scale-[1.02] transition-all flex items-center justify-center gap-2">
           <Plus size={18} />
           Create Session
         </button>
@@ -59,15 +59,15 @@ const Schedule = () => {
         {/* Calendar View (Placeholder) */}
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8">
               <div className="flex items-center gap-4">
-                <h2 className="text-lg font-bold text-slate-900">May 2024</h2>
+                <h2 className="text-base sm:text-lg font-bold text-slate-900">May 2024</h2>
                 <div className="flex gap-1">
-                  <button className="p-1.5 hover:bg-slate-50 rounded-lg text-slate-400"><ChevronRight size={18} className="rotate-180" /></button>
-                  <button className="p-1.5 hover:bg-slate-50 rounded-lg text-slate-400"><ChevronRight size={18} /></button>
+                  <button className="tap-target p-1.5 hover:bg-slate-50 rounded-lg text-slate-400"><ChevronRight size={18} className="rotate-180" /></button>
+                  <button className="tap-target p-1.5 hover:bg-slate-50 rounded-lg text-slate-400"><ChevronRight size={18} /></button>
                 </div>
               </div>
-              <div className="flex bg-slate-50 p-1 rounded-xl">
+              <div className="flex bg-slate-50 p-1 rounded-xl w-full sm:w-auto overflow-x-auto scrollbar-hide">
                 {['Day', 'Week', 'Month'].map(view => (
                   <button key={view} className={cn(
                     "px-4 py-1.5 text-xs font-bold rounded-lg transition-all",
@@ -79,13 +79,13 @@ const Schedule = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-7 gap-2">
+            <div className="grid grid-cols-7 gap-1 sm:gap-2 min-w-0">
               {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
-                <div key={day} className="text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest py-2">{day}</div>
+                <div key={day} className="text-center text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest py-1 sm:py-2">{day}</div>
               ))}
               {Array.from({ length: 31 }).map((_, i) => (
                 <div key={i} className={cn(
-                  "h-24 rounded-xl border border-slate-50 p-2 transition-all hover:border-purple-100 relative group",
+                  "h-10 sm:h-16 md:h-24 rounded-lg sm:rounded-xl border border-slate-50 p-1 sm:p-2 transition-all hover:border-purple-100 relative group",
                   i + 1 === 10 ? "bg-purple-50/50 border-purple-100" : ""
                 )}>
                   <span className={cn(

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
-import { Briefcase, FileText, Cpu, Gift, FolderOpen, CheckCircle2, Lock, Sparkles } from 'lucide-react';
+import { Briefcase, FileText, Cpu, Gift, FolderOpen, CheckCircle2, Lock, Sparkles, X } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
 const STEPS = [
@@ -21,15 +21,15 @@ const STEP_MAP = {
   '/intern-onboard/success': 6,
 };
 
-const OnboardSidebar = () => {
+const OnboardSidebar = ({ isMobileOpen, setIsMobileOpen }) => {
   const { pathname } = useLocation();
   const currentStep = STEP_MAP[pathname] || 1;
   const progressPct = Math.round(((currentStep - 1) / (STEPS.length - 1)) * 100);
 
-  return (
-    <aside className="fixed left-0 top-0 h-screen w-64 bg-white border-r border-slate-100 flex flex-col z-30 shadow-sm">
+  const sidebarContent = (
+    <>
       {/* Logo */}
-      <div className="p-5 border-b border-slate-100">
+      <div className="p-5 border-b border-slate-100 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 bg-gradient-to-br from-purple-600 to-violet-500 rounded-xl flex items-center justify-center shadow-md shadow-purple-100 shrink-0">
             <Briefcase size={17} className="text-white" />
@@ -39,6 +39,14 @@ const OnboardSidebar = () => {
             <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Onboarding Portal</div>
           </div>
         </div>
+        {setIsMobileOpen && (
+          <button
+            onClick={() => setIsMobileOpen(false)}
+            className="md:hidden p-1.5 rounded-lg hover:bg-slate-100 text-slate-400"
+          >
+            <X size={18} />
+          </button>
+        )}
       </div>
 
       {/* Steps Nav */}
@@ -117,7 +125,35 @@ const OnboardSidebar = () => {
           </p>
         </div>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop sidebar */}
+      <aside className="hidden md:flex fixed left-0 top-0 h-screen w-64 bg-white border-r border-slate-100 flex-col z-30 shadow-sm">
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile backdrop */}
+      {isMobileOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40 overscroll-none"
+          onClick={() => setIsMobileOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Mobile slide-over */}
+      <aside className={cn(
+        'md:hidden fixed left-0 top-0 h-screen w-[min(280px,85vw)] max-w-[320px] bg-white border-r border-slate-100 z-50 flex flex-col transition-transform duration-300 safe-padding-x',
+        isMobileOpen ? 'translate-x-0' : '-translate-x-full'
+      )}
+      aria-hidden={!isMobileOpen}
+      >
+        {sidebarContent}
+      </aside>
+    </>
   );
 };
 

@@ -1,9 +1,9 @@
 import React from 'react';
-import { LogOut, HelpCircle } from 'lucide-react';
+import { LogOut, HelpCircle, Menu } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useOnboardingAuth } from '../../contexts/OnboardingAuthContext';
 
-const OnboardTopNavbar = () => {
+const OnboardTopNavbar = ({ onMobileMenuToggle }) => {
   const { onboardUser, onboardLogout } = useOnboardingAuth();
   const navigate = useNavigate();
 
@@ -17,10 +17,23 @@ const OnboardTopNavbar = () => {
     : 'IN';
 
   return (
-    <header className="fixed top-0 left-64 right-0 h-16 bg-white/95 backdrop-blur-sm border-b border-slate-100 z-20 flex items-center justify-between px-8 shadow-sm">
-      <div>
-        <h2 className="text-sm font-bold text-slate-900">Intern Onboarding Portal</h2>
-        <p className="text-xs text-slate-400 font-medium">Complete all steps to finish onboarding</p>
+    <header className="fixed top-0 left-0 md:left-64 right-0 h-14 sm:h-16 bg-white/95 backdrop-blur-sm border-b border-slate-100 z-20 flex items-center justify-between px-3 sm:px-4 md:px-8 shadow-sm safe-padding-x">
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+        {onMobileMenuToggle && (
+          <button
+            onClick={onMobileMenuToggle}
+            className="md:hidden tap-target p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors shrink-0"
+            aria-label="Open menu"
+          >
+            <Menu size={20} />
+          </button>
+        )}
+        <div className="min-w-0">
+          <h2 className="text-xs sm:text-sm font-bold text-slate-900 truncate">Intern Onboarding Portal</h2>
+          <p className="text-[10px] sm:text-xs text-slate-400 font-medium hidden sm:block truncate">
+            Complete all steps to finish onboarding
+          </p>
+        </div>
       </div>
 
       <div className="flex items-center gap-3">

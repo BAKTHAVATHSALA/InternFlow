@@ -22,12 +22,12 @@ const RecruitmentLayout = () => {
       
       {/* Progress Bar Container (White) */}
       <div className="bg-white border-b border-slate-100">
-        <div className="max-w-6xl mx-auto py-8">
+        <div className="max-w-6xl mx-auto py-5 md:py-8 px-4 md:px-6">
           <RecruitmentStepper currentStep={getStep()} />
         </div>
       </div>
 
-      <main className="max-w-6xl mx-auto py-12 px-6">
+      <main className="max-w-6xl mx-auto py-6 md:py-12 px-4 md:px-6">
         <Outlet />
       </main>
 

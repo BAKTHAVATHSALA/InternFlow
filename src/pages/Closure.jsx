@@ -80,21 +80,29 @@ const Closure = () => {
     { label: "Exit Survey Rate", value: `${Math.round((surveySent/(totalClosed||1))*100)}%` },
   ];
 
-  if (loading) return <div className="p-8 animate-pulse">Loading closure data...</div>;
+  if (loading) return (
+    <div className="space-y-6 animate-pulse">
+      <div className="h-8 bg-slate-200 rounded-lg w-56" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[1,2,3,4].map(i => <div key={i} className="h-20 bg-slate-200 rounded-xl" />)}
+      </div>
+      <div className="h-64 bg-slate-200 rounded-xl" />
+    </div>
+  );
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Internship Closure</h1>
-          <p className="text-slate-500">Manage offboarding and closure activities</p>
+          <h1 className="text-2xl font-black text-slate-900">Internship Closure</h1>
+          <p className="text-slate-400 text-sm mt-0.5 font-medium">Manage offboarding and closure activities</p>
         </div>
-        <button 
+        <button
           onClick={() => {
             closures.filter(c => c.status !== 'survey_completed').forEach(c => sendSurvey(c.intern_id));
             toast.success('Sent to all eligible interns');
           }}
-          className="btn-primary flex items-center gap-2"
+          className="btn-primary flex items-center gap-2 self-start sm:self-auto"
         >
           <Send size={18} />
           Send Exit Survey
@@ -116,63 +124,112 @@ const Closure = () => {
 
       {/* Closed Internships Table */}
       <div className="card overflow-hidden">
-        <div className="p-6 border-b border-slate-100">
+        <div className="p-5 md:p-6 border-b border-slate-100">
           <h3 className="font-bold text-slate-800">Closed Internships</h3>
         </div>
-        <Table 
-          headers={["Intern", "Department", "End Date", "Rating", "Exit Survey", "Status"]}
-        >
-          {closures.map((intern) => (
-            <tr key={intern.id} className="hover:bg-slate-50/50 transition-colors">
-              <td className="px-6 py-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-bold text-xs shrink-0">
+
+        {/* Mobile Cards */}
+        <div className="md:hidden divide-y divide-slate-100">
+          {closures.length === 0 ? (
+            <p className="px-5 py-10 text-center text-slate-500 text-sm">No closed internships found.</p>
+          ) : closures.map((intern) => (
+            <div key={intern.id} className="p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-bold text-xs shrink-0">
                     {getInitials(intern.intern_name)}
                   </div>
-                  <div>
-                    <span className="font-medium text-slate-900 block">{intern.intern_name}</span>
-                    <span className="text-[10px] text-slate-500 block">{intern.role}</span>
+                  <div className="min-w-0">
+                    <span className="font-semibold text-slate-900 block truncate">{intern.intern_name}</span>
+                    <span className="text-[10px] text-slate-500">{intern.role}</span>
                   </div>
                 </div>
-              </td>
-              <td className="px-6 py-4 text-sm text-slate-600">{intern.department || '-'}</td>
-              <td className="px-6 py-4 text-sm text-slate-600">{new Date(intern.updated_at || intern.created_at).toLocaleDateString()}</td>
-              <td className="px-6 py-4">
-                <div className="flex items-center gap-1.5">
-                  <Star size={14} fill="#fbbf24" className="text-amber-400" />
-                  <span className="text-sm font-semibold text-slate-700">{((intern.ai_score || 80)/20).toFixed(1)}</span>
-                </div>
-              </td>
-              <td className="px-6 py-4">
-                {intern.status === 'survey_completed' ? (
-                  <span className="text-xs font-bold text-emerald-600">Completed</span>
-                ) : (
-                  <button 
-                    onClick={() => sendSurvey(intern.intern_id)}
-                    className="p-1.5 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
-                  >
-                    <Send size={16} />
-                  </button>
-                )}
-              </td>
-              <td className="px-6 py-4">
                 <span className={cn(
-                  "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase",
+                  "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase shrink-0",
                   intern.status === 'survey_completed' ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
                 )}>
                   {intern.status.replace('_', ' ')}
                 </span>
-              </td>
-            </tr>
+              </div>
+              <div className="flex items-center justify-between text-xs text-slate-500 flex-wrap gap-2">
+                <span>{intern.department || '-'}</span>
+                <span>{new Date(intern.updated_at || intern.created_at).toLocaleDateString()}</span>
+                <div className="flex items-center gap-1">
+                  <Star size={12} fill="#fbbf24" className="text-amber-400" />
+                  <span className="font-semibold text-slate-700">{((intern.ai_score || 80)/20).toFixed(1)}</span>
+                </div>
+                {intern.status === 'survey_completed' ? (
+                  <span className="font-bold text-emerald-600">Survey Done</span>
+                ) : (
+                  <button
+                    onClick={() => sendSurvey(intern.intern_id)}
+                    className="flex items-center gap-1 px-2 py-1 bg-primary-50 text-primary-600 rounded-lg text-[10px] font-bold"
+                  >
+                    <Send size={12} /> Send Survey
+                  </button>
+                )}
+              </div>
+            </div>
           ))}
-          {closures.length === 0 && (
-            <tr>
-              <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                No closed internships found.
-              </td>
-            </tr>
-          )}
-        </Table>
+        </div>
+
+        {/* Desktop Table */}
+        <div className="hidden md:block">
+          <Table
+            headers={["Intern", "Department", "End Date", "Rating", "Exit Survey", "Status"]}
+          >
+            {closures.map((intern) => (
+              <tr key={intern.id} className="hover:bg-slate-50/50 transition-colors">
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-bold text-xs shrink-0">
+                      {getInitials(intern.intern_name)}
+                    </div>
+                    <div>
+                      <span className="font-medium text-slate-900 block">{intern.intern_name}</span>
+                      <span className="text-[10px] text-slate-500 block">{intern.role}</span>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-6 py-4 text-sm text-slate-600">{intern.department || '-'}</td>
+                <td className="px-6 py-4 text-sm text-slate-600">{new Date(intern.updated_at || intern.created_at).toLocaleDateString()}</td>
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-1.5">
+                    <Star size={14} fill="#fbbf24" className="text-amber-400" />
+                    <span className="text-sm font-semibold text-slate-700">{((intern.ai_score || 80)/20).toFixed(1)}</span>
+                  </div>
+                </td>
+                <td className="px-6 py-4">
+                  {intern.status === 'survey_completed' ? (
+                    <span className="text-xs font-bold text-emerald-600">Completed</span>
+                  ) : (
+                    <button
+                      onClick={() => sendSurvey(intern.intern_id)}
+                      className="p-1.5 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                    >
+                      <Send size={16} />
+                    </button>
+                  )}
+                </td>
+                <td className="px-6 py-4">
+                  <span className={cn(
+                    "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase",
+                    intern.status === 'survey_completed' ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                  )}>
+                    {intern.status.replace('_', ' ')}
+                  </span>
+                </td>
+              </tr>
+            ))}
+            {closures.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                  No closed internships found.
+                </td>
+              </tr>
+            )}
+          </Table>
+        </div>
       </div>
 
       {/* Closure Checklist Section */}

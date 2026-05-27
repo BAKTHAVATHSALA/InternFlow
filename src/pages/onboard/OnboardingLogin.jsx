@@ -112,13 +112,13 @@ const OnboardingLogin = () => {
             <Briefcase size={28} className="text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-black text-slate-900 tracking-tight">InternFlow</h1>
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">InternFlow</h1>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Onboarding Portal · By Hexaware</p>
           </div>
         </div>
 
         {/* Card */}
-        <div className="bg-white rounded-3xl p-8 shadow-xl shadow-slate-200/60 border border-slate-100">
+        <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-8 shadow-xl shadow-slate-200/60 border border-slate-100">
           {step === 'email' ? (
             <>
               <div className="mb-7">

@@ -52,14 +52,14 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="max-w-md w-full">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 safe-padding-x">
+      <div className="max-w-md w-full min-w-0">
         {/* Logo/Brand Area */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-600 text-white mb-4 shadow-lg shadow-indigo-200">
             <ShieldCheck size={32} />
           </div>
-          <h1 className="text-3xl font-bold text-slate-900">InternFlow</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">InternFlow</h1>
           <p className="text-slate-500 mt-2">Enterprise Internship Management Platform</p>
         </div>
 

@@ -45,21 +45,21 @@ const MyInterns = () => {
   });
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="page-section">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">My Interns</h1>
-          <p className="text-slate-500 mt-1 font-medium">Manage and track your assigned interns.</p>
+          <h1 className="page-title">My Interns</h1>
+          <p className="page-description">Manage and track your assigned interns.</p>
         </div>
-        <div className="flex gap-2 relative">
-          <div className="relative">
+        <div className="flex gap-2 relative w-full sm:w-auto">
+          <div className="relative flex-1 sm:flex-none">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
             <input 
               type="text" 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search interns..." 
-              className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 w-64"
+              className="w-full sm:w-64 pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20"
             />
           </div>
           <button 
@@ -94,8 +94,8 @@ const MyInterns = () => {
 
       <div className="space-y-4">
         {filteredInterns.length > 0 ? filteredInterns.map((intern) => (
-          <div key={intern.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 hover:shadow-md transition-shadow">
-            <div className="flex flex-col lg:flex-row items-center gap-8">
+          <div key={intern.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 hover:shadow-md transition-shadow">
+            <div className="flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-8">
               <div className="w-16 h-16 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 font-bold text-xl shrink-0">
                 {intern.initials}
               </div>

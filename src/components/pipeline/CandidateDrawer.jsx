@@ -7,12 +7,14 @@ import {
 import { cn } from '../../utils/cn';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 const STATUS_CONFIG = {
   applied:       { label: 'Applied',       cls: 'bg-slate-100 text-slate-700' },
   screened:      { label: 'AI Screened',   cls: 'bg-blue-100 text-blue-700' },
   offer_pending: { label: 'Offer Sent',    cls: 'bg-emerald-100 text-emerald-700' },
   onboarded:     { label: 'Onboarded',     cls: 'bg-purple-100 text-purple-700' },
+  completed:     { label: 'Completed',     cls: 'bg-teal-100 text-teal-700' },
   rejected:      { label: 'Rejected',      cls: 'bg-rose-100 text-rose-700' },
 };
 
@@ -44,11 +46,14 @@ const Section = ({ title, children, className }) => (
 );
 
 const CandidateDrawer = ({ applicationId, onClose, onStatusChange }) => {
+  useBodyScrollLock(!!applicationId);
+
   const [candidate, setCandidate] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [acting, setActing] = useState(null); // 'offer' | 'reject' | 'credentials'
+  const [acting, setActing] = useState(null); // 'offer' | 'reject' | 'credentials' | 'ppo'
   const [showReject, setShowReject] = useState(false);
   const [hrNote, setHrNote] = useState('');
+  const [ppoDecision, setPpoDecision] = useState(null); // 'offered' | 'not_offered' | 'rejected'
 
   useEffect(() => {
     if (!applicationId) return;
@@ -89,6 +94,19 @@ const CandidateDrawer = ({ applicationId, onClose, onStatusChange }) => {
     }
   };
 
+  const handlePPOOffer = async () => {
+    setActing('ppo');
+    try {
+      await api.post(`/api/pipeline/${applicationId}/ppo-offer`);
+      toast.success('PPO offer email sent to intern');
+      setPpoDecision('offered');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to send PPO offer');
+    } finally {
+      setActing(null);
+    }
+  };
+
   const handleIssueCredentials = async () => {
     setActing('credentials');
     try {
@@ -119,15 +137,15 @@ const CandidateDrawer = ({ applicationId, onClose, onStatusChange }) => {
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/30 backdrop-blur-[2px] z-40 transition-opacity duration-300"
+        className="fixed inset-0 bg-black/30 backdrop-blur-[2px] z-40 transition-opacity duration-300 overscroll-none"
         onClick={onClose}
       />
 
       {/* Drawer */}
-      <div className="fixed top-0 right-0 h-full w-full max-w-[500px] bg-slate-50 z-50 flex flex-col shadow-2xl animate-slide-in-right">
+      <div className="fixed top-0 right-0 h-full w-full sm:max-w-[500px] bg-slate-50 z-50 flex flex-col shadow-2xl animate-slide-in-right">
 
         {/* Sticky Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-slate-100 shrink-0">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 bg-white border-b border-slate-100 shrink-0 safe-padding-x">
           <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Candidate Profile</span>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
             <X size={18} />
@@ -343,7 +361,51 @@ const CandidateDrawer = ({ applicationId, onClose, onStatusChange }) => {
         {/* Sticky Footer — Action Buttons */}
         {!loading && candidate && (
           <div className="px-5 py-4 bg-white border-t border-slate-100 shrink-0">
-            {candidate.status === 'onboarded' ? (
+            {candidate.status === 'completed' ? (
+              ppoDecision === 'offered' || candidate.ppo_offered ? (
+                <div className="flex items-center justify-center gap-2 py-3 bg-teal-50 border border-teal-200 rounded-xl">
+                  <CheckCircle2 size={16} className="text-teal-600" />
+                  <span className="text-sm font-bold text-teal-700">PPO Offer Sent</span>
+                </div>
+              ) : ppoDecision === 'not_offered' ? (
+                <div className="flex items-center justify-center gap-2 py-3 bg-slate-50 border border-slate-200 rounded-xl">
+                  <span className="text-sm font-bold text-slate-500">No offer extended</span>
+                </div>
+              ) : ppoDecision === 'rejected' ? (
+                <div className="flex items-center justify-center gap-2 py-3 bg-rose-50 border border-rose-200 rounded-xl">
+                  <XCircle size={16} className="text-rose-500" />
+                  <span className="text-sm font-bold text-rose-600">Not moving forward</span>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center mb-3">
+                    Internship Completed — Next Step
+                  </p>
+                  <button
+                    onClick={handlePPOOffer}
+                    disabled={acting === 'ppo'}
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white font-bold rounded-xl shadow-lg shadow-teal-100 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {acting === 'ppo' ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                    {acting === 'ppo' ? 'Sending…' : 'Extend Offer (PPO)'}
+                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setPpoDecision('not_offered')}
+                      className="flex-1 py-2.5 border border-slate-200 text-slate-500 hover:bg-slate-50 text-sm font-bold rounded-xl transition-colors"
+                    >
+                      Not Offer
+                    </button>
+                    <button
+                      onClick={() => setPpoDecision('rejected')}
+                      className="flex-1 py-2.5 border border-rose-200 text-rose-500 hover:bg-rose-50 text-sm font-bold rounded-xl transition-colors"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              )
+            ) : candidate.status === 'onboarded' ? (
               <div className="space-y-2">
                 <div className="flex items-center justify-center gap-2 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
                   <CheckCircle2 size={14} className="text-emerald-600" />

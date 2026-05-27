@@ -1,84 +1,67 @@
 const router = require('express').Router();
 const db = require('../db');
+const bcrypt = require('bcrypt');
 const { authenticate } = require('../middleware/auth');
 
-/**
- * @swagger
- * /api/settings/profile:
- *   get:
- *     summary: Get own profile (name, email, title, department, phone)
- *     tags: [Settings]
- *     security: [bearerAuth: []]
- *     responses:
- *       200:
- *         description: Profile details
- */
 router.get('/profile', authenticate, async (req, res) => {
   try {
-    const { rows } = await db.query('SELECT name, email, role, created_at FROM users WHERE id = $1', [req.user.id]);
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS title      TEXT`);
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS department TEXT`);
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone      TEXT`);
+
+    const { rows } = await db.query(
+      'SELECT name, email, role, title, department, phone, created_at FROM users WHERE id = $1',
+      [req.user.id]
+    );
     res.json(rows[0]);
   } catch (err) {
+    console.error('Profile fetch error:', err);
     res.status(500).json({ error: 'Failed to fetch profile' });
   }
 });
 
-/**
- * @swagger
- * /api/settings/profile:
- *   patch:
- *     summary: Update profile details
- *     tags: [Settings]
- *     security: [bearerAuth: []]
- *     responses:
- *       200:
- *         description: Profile updated
- */
 router.patch('/profile', authenticate, async (req, res) => {
   try {
-    const { name } = req.body;
-    await db.query('UPDATE users SET name = COALESCE($1, name) WHERE id = $2', [name, req.user.id]);
+    const { name, title, department, phone } = req.body;
+    await db.query(
+      `UPDATE users SET
+         name       = COALESCE($1, name),
+         title      = COALESCE($2, title),
+         department = COALESCE($3, department),
+         phone      = COALESCE($4, phone)
+       WHERE id = $5`,
+      [name || null, title || null, department || null, phone || null, req.user.id]
+    );
     res.json({ message: 'Profile updated' });
   } catch (err) {
+    console.error('Profile update error:', err);
     res.status(500).json({ error: 'Failed to update profile' });
   }
 });
 
-/**
- * @swagger
- * /api/settings/notifications:
- *   get:
- *     summary: Get notification preferences (toggles)
- *     tags: [Settings]
- *     security: [bearerAuth: []]
- *     responses:
- *       200:
- *         description: Preferences
- */
-router.get('/notifications', authenticate, async (req, res) => {
+router.patch('/password', authenticate, async (req, res) => {
   try {
-    // Assuming a preferences column or table
-    res.json({ email_alerts: true, push_notifications: false });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch preferences' });
-  }
-});
+    const { current_password, new_password } = req.body;
+    if (!current_password || !new_password) {
+      return res.status(400).json({ error: 'Both current and new password are required' });
+    }
+    if (new_password.length < 8) {
+      return res.status(400).json({ error: 'New password must be at least 8 characters' });
+    }
 
-/**
- * @swagger
- * /api/settings/notifications:
- *   patch:
- *     summary: Save notification preferences
- *     tags: [Settings]
- *     security: [bearerAuth: []]
- *     responses:
- *       200:
- *         description: Preferences saved
- */
-router.patch('/notifications', authenticate, async (req, res) => {
-  try {
-    res.json({ message: 'Preferences saved' });
+    const { rows } = await db.query('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
+    if (!rows.length) return res.status(404).json({ error: 'User not found' });
+
+    const valid = await bcrypt.compare(current_password, rows[0].password_hash);
+    if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+
+    const hash = await bcrypt.hash(new_password, 12);
+    await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, req.user.id]);
+
+    res.json({ message: 'Password updated successfully' });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to save preferences' });
+    console.error('Password update error:', err);
+    res.status(500).json({ error: 'Failed to update password' });
   }
 });
 

@@ -15,7 +15,7 @@ const CredentialCard = ({ label, value, icon: Icon, isPassword = false, loading 
   };
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm hover:border-purple-200 transition-all group">
+    <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 p-5 sm:p-8 shadow-sm hover:border-purple-200 transition-all group">
       <div className="flex justify-between items-start mb-6">
         <div className="w-12 h-12 bg-purple-50 rounded-2xl flex items-center justify-center text-purple-600 border border-purple-100 group-hover:scale-110 transition-transform">
           <Icon size={24} />
@@ -71,7 +71,7 @@ const CredentialsPage = () => {
   return (
     <div className="space-y-8 pb-10 max-w-4xl mx-auto">
       <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">My Credentials</h1>
+        <h1 className="page-title">My Credentials</h1>
         <p className="text-slate-500 mt-1 font-medium">Your InternFlow work email and portal access</p>
       </div>
 
@@ -89,7 +89,7 @@ const CredentialsPage = () => {
 
       {/* Mentor + Role info */}
       {(loading || creds?.mentorName) && (
-        <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm">
+        <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 p-5 sm:p-8 shadow-sm">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Assignment Details</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-5 bg-slate-50/50 rounded-2xl border border-slate-100">
@@ -115,7 +115,7 @@ const CredentialsPage = () => {
         </div>
       )}
 
-      <div className="bg-amber-50 border border-amber-100 rounded-3xl p-8 flex items-start gap-6 shadow-sm">
+      <div className="bg-amber-50 border border-amber-100 rounded-2xl sm:rounded-3xl p-5 sm:p-8 flex flex-col sm:flex-row items-start gap-4 sm:gap-6 shadow-sm">
         <div className="w-12 h-12 bg-amber-500 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg shadow-amber-200">
           <AlertTriangle size={24} />
         </div>
@@ -134,7 +134,7 @@ const CredentialsPage = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-3xl border border-slate-200 p-8 space-y-6">
+      <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 p-5 sm:p-8 space-y-6">
         <h3 className="font-black text-slate-900 uppercase tracking-widest text-[10px] flex items-center gap-2">
           <ShieldCheck size={16} className="text-purple-600" /> System Access
         </h3>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, CheckCircle2, ArrowRight, PenTool, Upload, AlertCircle, ChevronRight, X } from 'lucide-react';
+import { FileText, CheckCircle2, ArrowRight, PenTool, Upload, AlertCircle, ChevronRight } from 'lucide-react';
+import Modal from '../../components/Modal';
 import { cn } from '../../utils/cn';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
@@ -60,44 +61,38 @@ const OnboardDocumentsPage = () => {
   return (
     <div className="max-w-3xl space-y-6">
 
-      {/* Sign Modal */}
-      {signModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4">
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="text-sm font-bold text-slate-900">Sign Document</h3>
-              <button onClick={() => setSignModal(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
-                <X size={16} />
-              </button>
-            </div>
-            <p className="text-xs text-slate-500 mb-4">Type your full legal name to sign this document electronically.</p>
-            <input
-              type="text"
-              placeholder="Enter your full name"
-              value={signModal.name}
-              onChange={e => setSignModal(prev => ({ ...prev, name: e.target.value }))}
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-400 transition-all"
-              autoFocus
-              onKeyDown={e => e.key === 'Enter' && handleSign()}
-            />
-            <div className="flex gap-2 mt-4">
-              <button
-                onClick={() => setSignModal(null)}
-                className="flex-1 py-2.5 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSign}
-                disabled={!signModal.name.trim()}
-                className="flex-1 py-2.5 bg-purple-600 text-white rounded-xl text-xs font-bold hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-              >
-                Confirm & Sign
-              </button>
-            </div>
-          </div>
+      <Modal
+        open={!!signModal}
+        onClose={() => setSignModal(null)}
+        title="Sign Document"
+        panelClassName="sm:max-w-sm"
+      >
+        <p className="text-xs text-slate-500 mb-4 -mt-2">Type your full legal name to sign this document electronically.</p>
+        <input
+          type="text"
+          placeholder="Enter your full name"
+          value={signModal?.name ?? ''}
+          onChange={e => setSignModal(prev => ({ ...prev, name: e.target.value }))}
+          className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-400 transition-all"
+          autoFocus
+          onKeyDown={e => e.key === 'Enter' && handleSign()}
+        />
+        <div className="flex flex-col-reverse sm:flex-row gap-2 mt-4">
+          <button
+            onClick={() => setSignModal(null)}
+            className="flex-1 py-2.5 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSign}
+            disabled={!signModal?.name?.trim()}
+            className="flex-1 py-2.5 bg-purple-600 text-white rounded-xl text-xs font-bold hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+          >
+            Confirm & Sign
+          </button>
         </div>
-      )}
+      </Modal>
 
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-xs font-medium">

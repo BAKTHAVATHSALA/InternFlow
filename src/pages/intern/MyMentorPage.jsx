@@ -50,18 +50,18 @@ const MyMentorPage = () => {
   if (loading) return <div className="p-8 animate-pulse">Loading mentor details...</div>;
 
   return (
-    <div className="space-y-8 pb-10">
+    <div className="page-section pb-10">
       <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">My Mentor</h1>
-        <p className="text-slate-500 mt-1 font-medium">Communicate and learn from your assigned mentor</p>
+        <h1 className="page-title">My Mentor</h1>
+        <p className="page-description">Communicate and learn from your assigned mentor</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Mentor Profile */}
         <div className="lg:col-span-2 space-y-8">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-xl p-10 flex flex-col md:flex-row items-center gap-10 group relative overflow-hidden">
+          <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-xl p-5 sm:p-8 md:p-10 flex flex-col md:flex-row items-center gap-6 md:gap-10 group relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-purple-50 rounded-full -mr-32 -mt-32 blur-3xl opacity-50" />
-            <div className="relative z-10 w-40 h-40 rounded-3xl bg-purple-100 flex items-center justify-center text-purple-600 font-black text-5xl shadow-inner group-hover:scale-105 transition-transform duration-500">
+            <div className="relative z-10 w-28 h-28 sm:w-36 sm:h-36 md:w-40 md:h-40 rounded-2xl sm:rounded-3xl bg-purple-100 flex items-center justify-center text-purple-600 font-black text-3xl sm:text-4xl md:text-5xl shadow-inner group-hover:scale-105 transition-transform duration-500 shrink-0">
               {getInitials(mentor?.name)}
               {mentor && (
               <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-emerald-500 border-4 border-white rounded-full flex items-center justify-center" title="Online">
@@ -71,7 +71,7 @@ const MyMentorPage = () => {
             </div>
             <div className="relative z-10 flex-1 text-center md:text-left space-y-6">
               <div className="space-y-2">
-                <h3 className="text-3xl font-black text-slate-900">{mentor?.name || 'No Mentor Assigned'}</h3>
+                <h3 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900">{mentor?.name || 'No Mentor Assigned'}</h3>
                 {mentor && (
                   <>
                   <p className="text-slate-500 font-bold flex items-center justify-center md:justify-start gap-2">
@@ -91,16 +91,16 @@ const MyMentorPage = () => {
               </div>
               )}
               {mentor && (
-              <div className="flex gap-4 pt-2">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-2 w-full">
                 <button 
                   onClick={() => alert(`Chat opened with ${mentor.name}`)}
-                  className="flex-1 py-4 bg-gradient-to-r from-purple-600 to-violet-500 text-white text-xs font-black rounded-2xl shadow-lg shadow-purple-200 flex items-center justify-center gap-3 hover:scale-[1.02] transition-all"
+                  className="flex-1 py-3.5 sm:py-4 bg-gradient-to-r from-purple-600 to-violet-500 text-white text-xs font-black rounded-2xl shadow-lg shadow-purple-200 flex items-center justify-center gap-3 hover:scale-[1.02] transition-all"
                 >
                   <MessageSquare size={18} /> Send Message
                 </button>
                 <button 
                   onClick={() => alert('Opening calendar to schedule a call...')}
-                  className="flex-1 py-4 bg-white border border-slate-200 text-slate-600 text-xs font-black rounded-2xl hover:bg-slate-50 transition-all flex items-center justify-center gap-3"
+                  className="flex-1 py-3.5 sm:py-4 bg-white border border-slate-200 text-slate-600 text-xs font-black rounded-2xl hover:bg-slate-50 transition-all flex items-center justify-center gap-3"
                 >
                   <Calendar size={18} /> Schedule Call
                 </button>
@@ -123,8 +123,8 @@ const MyMentorPage = () => {
             </div>
             <div className="divide-y divide-slate-50">
               {meetings.map((meeting) => (
-                <div key={meeting.id} className="p-8 flex items-center justify-between group hover:bg-slate-50 transition-all">
-                  <div className="flex gap-6 items-center">
+                <div key={meeting.id} className="p-4 sm:p-6 md:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-3 group hover:bg-slate-50 transition-all">
+                  <div className="flex gap-4 sm:gap-6 items-center min-w-0">
                     <div className={cn(
                       "w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm border",
                       meeting.status === 'Completed' ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-blue-50 text-blue-600 border-blue-100"
@@ -152,7 +152,7 @@ const MyMentorPage = () => {
         {/* Feedback Column */}
         {mentor && (
         <div className="space-y-8">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 space-y-8 h-full">
+          <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm p-5 sm:p-8 space-y-6 sm:space-y-8 h-full">
             <h3 className="font-black text-slate-900 uppercase tracking-widest text-[10px]">Mentor Feedback</h3>
             <div className="space-y-8">
               {feedback.map((item) => (

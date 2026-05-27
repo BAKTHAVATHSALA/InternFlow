@@ -64,14 +64,14 @@ const ProjectSubmissionPage = () => {
   const isSubmitted = !!projectData?.id;
 
   return (
-    <div className="space-y-8 pb-10 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between">
+    <div className="page-section pb-10 max-w-4xl mx-auto w-full">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Project Submission</h1>
-          <p className="text-slate-500 mt-1 font-medium">Submit your project for mentor review</p>
+          <h1 className="page-title">Project Submission</h1>
+          <p className="page-description">Submit your project for mentor review</p>
         </div>
         <div className={cn(
-          "px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest border",
+          "px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest border shrink-0 self-start sm:self-center",
           isSubmitted ? "bg-purple-50 text-purple-600 border-purple-100" 
           : isLMSComplete ? "bg-emerald-50 text-emerald-600 border-emerald-100" 
           : "bg-rose-50 text-rose-600 border-rose-100"
@@ -82,7 +82,7 @@ const ProjectSubmissionPage = () => {
 
       {/* Project Overview Card */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden group hover:border-purple-200 transition-all">
-        <div className="p-8 space-y-8">
+        <div className="card-padding space-y-6 sm:space-y-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="flex items-center gap-6">
               <div className="w-16 h-16 bg-purple-50 rounded-2xl flex items-center justify-center text-purple-600 shadow-inner group-hover:scale-110 transition-transform duration-500">
@@ -116,7 +116,7 @@ const ProjectSubmissionPage = () => {
       </div>
 
       {!isLMSComplete && !isSubmitted && (
-        <div className="bg-rose-50 border border-rose-100 rounded-3xl p-8 flex items-start gap-6 animate-pulse">
+        <div className="bg-rose-50 border border-rose-100 rounded-2xl sm:rounded-3xl p-5 sm:p-8 flex flex-col sm:flex-row items-start gap-4 sm:gap-6">
           <div className="w-12 h-12 bg-rose-500 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg shadow-rose-200">
             <Lock size={24} />
           </div>

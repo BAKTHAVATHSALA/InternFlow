@@ -1,11 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Outlet, Navigate } from 'react-router-dom';
 import { useOnboardingAuth } from '../contexts/OnboardingAuthContext';
 import OnboardSidebar from '../components/onboard/OnboardSidebar';
 import OnboardTopNavbar from '../components/onboard/OnboardTopNavbar';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 const InternOnboardLayout = () => {
   const { isOnboardAuthenticated, loading } = useOnboardingAuth();
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
+  useBodyScrollLock(isMobileOpen);
 
   if (loading) {
     return (
@@ -24,10 +27,10 @@ const InternOnboardLayout = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <OnboardSidebar />
-      <OnboardTopNavbar />
-      <main className="ml-64 pt-16 min-h-screen">
-        <div className="p-8">
+      <OnboardSidebar isMobileOpen={isMobileOpen} setIsMobileOpen={setIsMobileOpen} />
+      <OnboardTopNavbar onMobileMenuToggle={() => setIsMobileOpen(v => !v)} />
+      <main className="md:ml-64 pt-14 sm:pt-16 min-h-screen max-w-[100vw] overflow-x-hidden">
+        <div className="p-3 sm:p-4 md:p-6 lg:p-8 safe-padding-x">
           <Outlet />
         </div>
       </main>

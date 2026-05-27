@@ -325,7 +325,7 @@ router.post('/intern/portal-login', async (req, res) => {
        FROM applications a
        JOIN users u ON u.id = a.intern_id
        WHERE LOWER(a.work_email) = LOWER($1)
-         AND a.status = 'onboarded'
+         AND a.status IN ('onboarded', 'completed')
        LIMIT 1`,
       [workEmail]
     );
@@ -373,25 +373,40 @@ router.get('/intern/credentials', authenticate, async (req, res) => {
   try {
     const { rows } = await db.query(
       `SELECT
+         a.id                AS application_id,
+         a.intern_id,
          a.work_email,
          a.intern_code,
          a.credentials_issued_at,
          COALESCE(NULLIF(TRIM(CONCAT(a.first_name, ' ', a.last_name)), ''), u.name) AS intern_name,
-         m.name  AS mentor_name,
-         m.role  AS mentor_title,
+         COALESCE(m.name,  rm.name)              AS mentor_name,
+         COALESCE(m.role,  rm.role)              AS mentor_title,
+         COALESCE(ma.mentor_id, r.mentor_id)     AS resolved_mentor_id,
          j.title AS role
        FROM applications a
        JOIN users u  ON u.id  = a.intern_id
        JOIN jobs  j  ON j.id  = a.job_id
+       LEFT JOIN referrals r           ON r.id  = a.referral_id
        LEFT JOIN mentor_assignments ma ON ma.intern_id = a.intern_id
-       LEFT JOIN users m ON m.id = ma.mentor_id
-       WHERE a.intern_id = $1 AND a.status = 'onboarded'
+       LEFT JOIN users m  ON m.id  = ma.mentor_id
+       LEFT JOIN users rm ON rm.id = r.mentor_id
+       WHERE a.intern_id = $1 AND a.status IN ('onboarded', 'completed')
        ORDER BY a.onboarded_at DESC LIMIT 1`,
       [req.user.id]
     );
 
     if (!rows.length) return res.status(404).json({ error: 'Credentials not found' });
     const row = rows[0];
+
+    // Self-heal: ensure mentor_assignments exists for this intern (safe upsert, no-op if already correct)
+    if (row.resolved_mentor_id) {
+      db.query(
+        `INSERT INTO mentor_assignments (mentor_id, intern_id, application_id)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (intern_id) DO UPDATE SET mentor_id = EXCLUDED.mentor_id, assigned_at = NOW()`,
+        [row.resolved_mentor_id, row.intern_id, row.application_id]
+      ).catch(err => console.error('[MENTOR BACKFILL]', err));
+    }
 
     // Reconstruct temp password deterministically from intern name
     const firstName = row.intern_name.trim().split(/\s+/)[0];

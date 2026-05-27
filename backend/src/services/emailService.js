@@ -125,47 +125,121 @@ const sendReferralInvite = async ({
   location,
   applyBy
 }) => {
-  const emailTemplate = `
-=========================================
-REFERRAL_INVITE
-To:       ${to}
-Subject:  You've been referred for ${roleName} at Hexaware
-Trigger:  Employee submits referral form
-=========================================
+  const portalUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/onboard/login`;
+  const firstName = internName.split(' ')[0];
+  const stipendText = stipend == null ? 'Not specified' : stipend === 0 ? 'Unpaid' : `₹${Number(stipend).toLocaleString()} / month`;
+  const durationText = `${duration} months &middot; ${mode} &middot; ${location}`;
 
-  InternFlow BY HEXAWARE
+  const row = (label, value, valueColor) => `
+    <tr>
+      <td style="padding:12px 20px;font-size:13px;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;width:38%;">${label}</td>
+      <td style="padding:12px 20px;font-size:13px;font-weight:700;color:${valueColor || '#1e293b'};border-bottom:1px solid #f1f5f9;text-align:right;">${value}</td>
+    </tr>`;
 
-  Hi ${internName},
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 16px;">
+    <tr><td align="center">
+      <table width="540" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
 
-  You've been referred for an internship opportunity! ${referrerName}, a Software
-  Engineer at Hexaware Technologies, thinks you'd be a great fit for their team.
+        <!-- Header -->
+        <tr>
+          <td align="center" style="padding:40px 40px 28px;">
+            <div style="width:56px;height:56px;background:#4f46e5;border-radius:16px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;">
+              <span style="font-size:26px;color:#ffffff;">✦</span>
+            </div>
+            <div style="font-size:20px;font-weight:900;color:#1e293b;letter-spacing:-0.5px;">InternFlow</div>
+            <div style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:2.5px;text-transform:uppercase;margin-top:3px;">BY HEXAWARE</div>
+          </td>
+        </tr>
 
-  -------------------------------------------------------------
-  | Role         | ${roleName}
-  | Company      | Hexaware Technologies
-  | Stipend      | ${stipend == null ? 'Not specified' : stipend === 0 ? 'Unpaid' : `₹${stipend.toLocaleString()} / month`}
-  | Duration     | ${duration} months · ${mode} · ${location}
-  | Referred by  | ${referrerName}
-  | Apply by     | ${applyBy}
-  -------------------------------------------------------------
+        <!-- Divider -->
+        <tr><td style="padding:0 40px;"><div style="height:1px;background:#f1f5f9;"></div></td></tr>
 
-  Click the button below to log in to the Intern Portal, complete your application, and
-  track your status - all in one place.
+        <!-- Body -->
+        <tr>
+          <td style="padding:36px 40px 0;">
+            <div style="font-size:22px;font-weight:800;color:#1e293b;margin-bottom:12px;">Hi ${firstName},</div>
+            <p style="font-size:15px;color:#475569;line-height:1.7;margin:0 0 28px;">
+              You've been referred for an internship opportunity!
+              <strong style="color:#4f46e5;">${referrerName}</strong>, a Software Engineer at Hexaware Technologies,
+              thinks you'd be a great fit for their team.
+            </p>
+          </td>
+        </tr>
 
-  [ Complete Application & Login -> http://localhost:5173/recruitment/login ]
+        <!-- Details Card -->
+        <tr>
+          <td style="padding:0 40px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:14px;border:1px solid #e2e8f0;overflow:hidden;">
+              ${row('Role', roleName)}
+              ${row('Company', 'Hexaware Technologies')}
+              ${row('Stipend', stipendText, '#16a34a')}
+              ${row('Duration', durationText)}
+              ${row('Referred by', referrerName)}
+              <tr>
+                <td style="padding:12px 20px;font-size:13px;color:#64748b;font-weight:600;width:38%;">Apply by</td>
+                <td style="padding:12px 20px;font-size:13px;font-weight:700;color:#dc2626;text-align:right;">${applyBy}</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
 
-  This link expires in 24 hours - If you didn't expect this, you can ignore this email
+        <!-- CTA -->
+        <tr>
+          <td style="padding:32px 40px 0;">
+            <p style="font-size:14px;color:#475569;line-height:1.7;margin:0 0 24px;">
+              Click the button below to log in to the Intern Portal, complete your application, and
+              track your status &mdash; all in one place.
+            </p>
+            <table cellpadding="0" cellspacing="0" width="100%">
+              <tr>
+                <td align="center">
+                  <a href="${portalUrl}"
+                     style="display:inline-block;padding:16px 40px;background:#4f46e5;color:#ffffff;text-decoration:none;
+                            border-radius:14px;font-size:15px;font-weight:800;letter-spacing:0.2px;">
+                    Complete Application &amp; Login &rarr;
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
 
-  InternFlow · Hexaware Technologies · Chennai, Tamil Nadu
-  You received this because someone referred you for an internship.
-=========================================
-`;
+        <!-- Expiry note -->
+        <tr>
+          <td style="padding:20px 40px 0;" align="center">
+            <p style="font-size:12px;color:#94a3b8;margin:0;">
+              This link expires in 24 hours &middot; If you didn't expect this, you can ignore this email
+            </p>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="padding:32px 40px 40px;" align="center">
+            <div style="height:1px;background:#f1f5f9;margin-bottom:24px;"></div>
+            <p style="font-size:11px;color:#94a3b8;margin:0 0 4px;">InternFlow &middot; Hexaware Technologies &middot; Chennai, Tamil Nadu</p>
+            <p style="font-size:11px;color:#94a3b8;margin:0;">You received this because someone referred you for an internship.</p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  const plainText = `Hi ${firstName},\n\nYou've been referred for an internship at Hexaware Technologies by ${referrerName}.\n\nRole: ${roleName}\nStipend: ${stipendText}\nDuration: ${duration} months · ${mode} · ${location}\nApply by: ${applyBy}\n\nComplete your application here: ${portalUrl}\n\nThis link expires in 24 hours.`;
 
   return sendEmail({
     to,
     subject: `You've been referred for ${roleName} at Hexaware`,
-    body: emailTemplate,
-    name: internName
+    body: plainText,
+    html,
   });
 };
 
@@ -747,6 +821,178 @@ const sendOnboardingConfirmEmail = async ({ to, internName, batch, startDate, po
   });
 };
 
+const sendPPOEmail = async ({ to, internName, roleName, mentorName }) => {
+  const firstName = internName.split(' ')[0];
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 16px;">
+<tr><td align="center">
+<table width="540" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+
+  <!-- Header -->
+  <tr>
+    <td align="center" style="padding:44px 40px 32px;background:linear-gradient(135deg,#4f46e5,#7c3aed);">
+      <div style="font-size:52px;margin-bottom:12px;">🎉</div>
+      <div style="font-size:26px;font-weight:900;color:#fff;letter-spacing:-0.5px;">You've Got an Offer!</div>
+      <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.75);letter-spacing:2px;text-transform:uppercase;margin-top:4px;">Hexaware Technologies</div>
+    </td>
+  </tr>
+
+  <!-- Body -->
+  <tr>
+    <td style="padding:36px 40px 0;">
+      <p style="margin:0 0 8px;font-size:18px;font-weight:800;color:#1e293b;">Congratulations, ${firstName}!</p>
+      <p style="margin:0 0 24px;font-size:14px;color:#475569;line-height:1.75;">
+        We are thrilled to let you know that based on your outstanding performance during your
+        <strong style="color:#1e293b;">${roleName}</strong> internship at
+        <strong style="color:#1e293b;">Hexaware Technologies</strong>, we would like to extend you
+        a <strong style="color:#4f46e5;">Pre-Placement Offer (PPO)</strong> to join us full-time.
+      </p>
+
+      <table width="100%" cellpadding="0" cellspacing="0"
+             style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;margin-bottom:28px;">
+        <tr>
+          <td style="padding:12px 20px;font-size:12px;font-weight:600;color:#64748b;border-bottom:1px solid #f1f5f9;">Role</td>
+          <td style="padding:12px 20px;font-size:13px;font-weight:700;color:#1e293b;text-align:right;border-bottom:1px solid #f1f5f9;">${roleName} (Full-Time)</td>
+        </tr>
+        <tr>
+          <td style="padding:12px 20px;font-size:12px;font-weight:600;color:#64748b;border-bottom:1px solid #f1f5f9;">Company</td>
+          <td style="padding:12px 20px;font-size:13px;font-weight:700;color:#1e293b;text-align:right;border-bottom:1px solid #f1f5f9;">Hexaware Technologies</td>
+        </tr>
+        ${mentorName ? `<tr>
+          <td style="padding:12px 20px;font-size:12px;font-weight:600;color:#64748b;">Recommended by</td>
+          <td style="padding:12px 20px;font-size:13px;font-weight:700;color:#4f46e5;text-align:right;">${mentorName}</td>
+        </tr>` : ''}
+      </table>
+
+      <p style="margin:0 0 28px;font-size:14px;color:#475569;line-height:1.75;">
+        Our HR team will be reaching out shortly with the complete offer letter and next steps.
+        If you have any questions in the meantime, please feel free to reply to this email.
+      </p>
+
+      <div style="text-align:center;margin-bottom:36px;">
+        <a href="mailto:hr@hexaware.com"
+           style="display:inline-block;padding:14px 36px;background:#4f46e5;color:#fff;font-size:14px;
+                  font-weight:800;border-radius:12px;text-decoration:none;letter-spacing:0.3px;">
+          Reply to HR &rarr;
+        </a>
+      </div>
+    </td>
+  </tr>
+
+  <!-- Footer -->
+  <tr>
+    <td style="padding:20px 40px;background:#f8fafc;border-top:1px solid #f1f5f9;text-align:center;">
+      <div style="font-size:11px;color:#94a3b8;">
+        InternFlow &nbsp;&middot;&nbsp; Hexaware Technologies &nbsp;&middot;&nbsp; Confidential
+      </div>
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+
+  return sendEmail({
+    to,
+    subject: `Congratulations! You have a Pre-Placement Offer from Hexaware Technologies 🎉`,
+    body: `Congratulations ${firstName}! Based on your internship performance, Hexaware Technologies would like to extend you a Pre-Placement Offer (PPO) for the ${roleName} role full-time. Our HR team will follow up shortly.`,
+    html,
+  });
+};
+
+const sendCertificateEmail = async ({
+  to, internName, mentorName, roleName, startDate, endDate, certId, portalUrl
+}) => {
+  const firstName = internName.split(' ')[0];
+  const issuedDate = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const portal = portalUrl || 'http://localhost:5173/certificate';
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 16px;">
+<tr><td align="center">
+<table width="540" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+
+  <!-- Header -->
+  <tr>
+    <td align="center" style="padding:44px 40px 32px;background:linear-gradient(135deg,#f59e0b,#d97706);">
+      <div style="font-size:52px;margin-bottom:12px;">&#127942;</div>
+      <div style="font-size:26px;font-weight:900;color:#fff;letter-spacing:-0.5px;">Internship Complete!</div>
+      <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.8);letter-spacing:2px;text-transform:uppercase;margin-top:4px;">Hexaware Technologies</div>
+    </td>
+  </tr>
+
+  <!-- Body -->
+  <tr>
+    <td style="padding:36px 40px 0;">
+      <p style="margin:0 0 8px;font-size:18px;font-weight:800;color:#1e293b;">Congratulations, ${firstName}!</p>
+      <p style="margin:0 0 28px;font-size:14px;color:#475569;line-height:1.75;">
+        Your mentor <strong style="color:#4f46e5;">${mentorName || 'your mentor'}</strong> has reviewed and approved your project.
+        You have successfully completed your <strong style="color:#1e293b;">${roleName}</strong>
+        at <strong style="color:#1e293b;">Hexaware Technologies!</strong>
+      </p>
+
+      <!-- Certificate Preview Card -->
+      <table width="100%" cellpadding="0" cellspacing="0"
+             style="border:1.5px solid #e2e8f0;border-radius:16px;overflow:hidden;margin-bottom:28px;">
+        <tr>
+          <td align="center" style="padding:28px 32px 24px;border-bottom:1px solid #f1f5f9;">
+            <div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:3px;text-transform:uppercase;margin-bottom:8px;">HEXAWARE TECHNOLOGIES</div>
+            <div style="font-size:18px;font-weight:900;color:#1e293b;margin-bottom:14px;">Certificate of Internship</div>
+            <div style="font-size:22px;font-weight:800;color:#4f46e5;margin-bottom:8px;">${internName}</div>
+            <div style="font-size:12px;color:#64748b;">${roleName} &nbsp;&middot;&nbsp; ${startDate} &ndash; ${endDate}</div>
+            <div style="margin-top:12px;font-size:10px;font-weight:600;color:#94a3b8;letter-spacing:1px;">${certId}</div>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Download Button -->
+      <div style="text-align:center;margin-bottom:20px;">
+        <a href="${portal}"
+           style="display:inline-block;padding:14px 36px;background:#4f46e5;color:#fff;font-size:14px;
+                  font-weight:800;border-radius:12px;text-decoration:none;letter-spacing:0.3px;">
+          Download Certificate (PDF) &rarr;
+        </a>
+      </div>
+
+      <p style="text-align:center;font-size:11px;color:#94a3b8;margin:0 0 36px;">
+        Certificate is digitally signed and verifiable using cert ID: <strong>${certId}</strong>
+      </p>
+    </td>
+  </tr>
+
+  <!-- Footer -->
+  <tr>
+    <td style="padding:20px 40px;background:#f8fafc;border-top:1px solid #f1f5f9;text-align:center;">
+      <div style="font-size:11px;color:#94a3b8;">
+        InternFlow &nbsp;&middot;&nbsp; Hexaware Technologies &nbsp;&middot;&nbsp; Issued ${issuedDate}
+      </div>
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+
+  return sendEmail({
+    to,
+    subject: `Your internship certificate is ready to download 🏆`,
+    body: `Congratulations ${firstName}! Your internship certificate is ready. Cert ID: ${certId}. Visit the portal to download.`,
+    html,
+  });
+};
+
 module.exports = {
   sendOtp,
   sendReferralInvite,
@@ -756,5 +1002,7 @@ module.exports = {
   sendRejectionEmail,
   sendOnboardingConfirmEmail,
   sendCredentialsEmail,
+  sendCertificateEmail,
+  sendPPOEmail,
   sendEmail
 };
