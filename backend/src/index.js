@@ -45,6 +45,7 @@ app.use('/api/closure', require('./routes/closure'));
 app.use('/api/audit-trail', require('./routes/audit'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/dashboard', require('./routes/dashboard'));
+app.use('/api/ai-assistant', require('./routes/aiAssistant'));
 
 // Global error handler
 app.use((err, req, res, next) => {

@@ -71,6 +71,7 @@ import OnboardSuccessPage from './pages/onboard/OnboardSuccessPage';
 import Login from './pages/Login';
 import OnboardingLogin from './pages/onboard/OnboardingLogin';
 import InternPortalLogin from './pages/intern/InternPortalLogin';
+import AIAssistant from './components/AIAssistant';
 
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -243,6 +244,9 @@ const AppRoutes = () => {
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+
+      {/* Role-aware AI Assistant — shown across all authenticated dashboard pages */}
+      {isAuthenticated && <AIAssistant />}
     </Router>
   );
 };
